@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理员登录</title>
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+  <div class="login-box">
+    <h1 class="login-title">管理员登录</h1>
+    <form method="POST" action="/admin/login">
+      <input class="login-input" type="password" name="password" placeholder="请输入密码" autofocus>
+      <% if (error) { %>
+        <p class="login-error"><%= error %></p>
+      <% } %>
+      <button class="login-btn" type="submit">登录</button>
+    </form>
+  </div>
+</body>
+</html>

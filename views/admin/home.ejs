@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理后台</title>
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+  <div class="admin-header">
+    <h1>管理后台</h1>
+    <a class="logout-link" href="/admin/logout">退出</a>
+  </div>
+
+  <div class="admin-tabs">
+    <button class="admin-tab active" data-view="orders">订单管理</button>
+    <button class="admin-tab" data-view="dishes">菜品管理</button>
+    <button class="admin-tab" data-view="categories">分类管理</button>
+  </div>
+
+  <!-- 订单视图 -->
+  <div class="admin-view" id="view-orders">
+    <div id="order-list"></div>
+  </div>
+
+  <!-- 菜品视图 -->
+  <div class="admin-view" id="view-dishes" style="display:none">
+    <div class="dish-toolbar">
+      <button class="add-dish-btn" id="add-dish-btn">＋ 添加菜品</button>
+    </div>
+    <div id="dish-list"></div>
+  </div>
+
+  <!-- 分类视图 -->
+  <div class="admin-view" id="view-categories" style="display:none">
+    <div class="cat-toolbar">
+      <input class="cat-input" id="cat-input" placeholder="输入新分类名">
+      <button class="cat-add-btn" id="cat-add-btn">添加</button>
+    </div>
+    <div id="cat-list"></div>
+  </div>
+
+  <!-- 模态弹窗 -->
+  <div class="modal-overlay" id="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <h2 class="modal-title" id="modal-title">添加菜品</h2>
+      <form id="dish-form">
+        <input type="hidden" id="dish-id">
+        <label class="form-label">菜名</label>
+        <input class="form-input" type="text" id="dish-name" required>
+
+        <label class="form-label">分类</label>
+        <select class="form-input" id="dish-category" required></select>
+
+        <label class="form-label">图片URL</label>
+        <input class="form-input" type="text" id="dish-image" placeholder="可选">
+
+        <label class="form-label">食材（用 、或逗号分隔）</label>
+        <textarea class="form-textarea" id="dish-ingredients" rows="2"></textarea>
+
+        <label class="form-label">步骤（每行一步）</label>
+        <textarea class="form-textarea" id="dish-steps" rows="4"></textarea>
+
+        <label class="form-check-label">
+          <input type="checkbox" id="dish-available" checked> 上架（客户端可见）
+        </label>
+
+        <div class="form-actions">
+          <button type="button" class="form-cancel-btn" id="modal-cancel">取消</button>
+          <button type="submit" class="form-save-btn">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    var STATUS_MAP = { pending: '待做', done: '已完成' };
+
+    function formatTime(iso) {
+      var d = new Date(iso);
+      var pad = function(n) { return n < 10 ? '0' + n : n; };
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+        + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+
+    // === 订单列表 ===
+    function loadOrders() {
+      fetch('/api/admin/orders')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          var el = document.getElementById('order-list');
+
+          if (!data.orders || data.orders.length === 0) {
+            el.innerHTML = '<div class="empty-msg">还没有点餐记录</div>';
+            return;
+          }
+
+          el.innerHTML = '';
+          data.orders.forEach(function(order) {
+            var card = document.createElement('div');
+            card.className = 'order-card';
+
+            var head = document.createElement('div');
+            head.className = 'order-head';
+            head.innerHTML = '<span class="order-time">' + formatTime(order.createdAt) + '</span>'
+              + '<span class="order-status status-' + order.status + '">' + (STATUS_MAP[order.status] || order.status) + '</span>';
+
+            var body = document.createElement('div');
+            body.className = 'order-dishes';
+            body.textContent = order.dishNames.join('、');
+
+            card.appendChild(head);
+            card.appendChild(body);
+
+            if (order.status === 'pending') {
+              var btn = document.createElement('button');
+              btn.className = 'complete-btn';
+              btn.textContent = '标记完成';
+              btn.addEventListener('click', function() {
+                fetch('/api/admin/orders/' + order.id, { method: 'PUT' })
+                  .then(function(res) { return res.json(); })
+                  .then(function(result) {
+                    if (result.success) {
+                      head.querySelector('.order-status').textContent = '已完成';
+                      head.querySelector('.order-status').className = 'order-status status-done';
+                      btn.disabled = true;
+                    }
+                  });
+              });
+              card.appendChild(btn);
+            }
+
+            el.appendChild(card);
+          });
+        });
+    }
+
+    // === 菜品列表 ===
+    function loadDishes() {
+      fetch('/api/admin/dishes')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          var el = document.getElementById('dish-list');
+
+          if (!data.dishes || data.dishes.length === 0) {
+            el.innerHTML = '<div class="empty-msg">还没有菜品</div>';
+            return;
+          }
+
+          el.innerHTML = '';
+          data.dishes.forEach(function(dish) {
+            var card = document.createElement('div');
+            card.className = 'dish-row';
+
+            var info = document.createElement('div');
+            info.className = 'dish-row-info';
+            info.innerHTML = '<span class="dish-row-name">' + dish.name + '</span>'
+              + '<span class="dish-row-cat">' + dish.category + '</span>'
+              + '<span class="dish-row-status ' + (dish.isAvailable ? 'avail-yes' : 'avail-no') + '">'
+              + (dish.isAvailable ? '上架' : '已下架') + '</span>';
+
+            var actions = document.createElement('div');
+            actions.className = 'dish-row-actions';
+
+            var editBtn = document.createElement('button');
+            editBtn.className = 'dish-edit-btn';
+            editBtn.textContent = '编辑';
+            editBtn.addEventListener('click', function() { openModal(dish); });
+
+            var delBtn = document.createElement('button');
+            delBtn.className = 'dish-del-btn';
+            delBtn.textContent = '删除';
+            delBtn.addEventListener('click', function() {
+              if (!confirm('确定删除「' + dish.name + '」吗？')) return;
+              fetch('/api/admin/dishes/' + dish.id, { method: 'DELETE' })
+                .then(function(res) { return res.json(); })
+                .then(function(result) {
+                  if (result.success) loadDishes();
+                });
+            });
+
+            actions.appendChild(editBtn);
+            actions.appendChild(delBtn);
+
+            card.appendChild(info);
+            card.appendChild(actions);
+            el.appendChild(card);
+          });
+        });
+    }
+
+    // === 分类列表 ===
+    function loadCategories() {
+      fetch('/api/admin/categories')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          var el = document.getElementById('cat-list');
+          var cats = data.categories || [];
+
+          if (cats.length === 0) {
+            el.innerHTML = '<div class="empty-msg">还没有分类</div>';
+            return;
+          }
+
+          el.innerHTML = '';
+          cats.forEach(function(cat) {
+            var row = document.createElement('div');
+            row.className = 'cat-row';
+
+            var nameSpan = document.createElement('span');
+            nameSpan.className = 'cat-name';
+            nameSpan.textContent = cat;
+
+            var actions = document.createElement('div');
+            actions.className = 'cat-actions';
+
+            var renameBtn = document.createElement('button');
+            renameBtn.className = 'cat-rename-btn';
+            renameBtn.textContent = '重命名';
+            renameBtn.addEventListener('click', function() {
+              var newName = prompt('重命名「' + cat + '」为：', cat);
+              if (!newName || newName.trim() === cat) return;
+              fetch('/api/admin/categories/' + encodeURIComponent(cat), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ newName: newName.trim() }),
+              })
+                .then(function(res) { return res.json(); })
+                .then(function(result) {
+                  if (result.error) { alert(result.error); return; }
+                  if (result.success) loadCategories();
+                });
+            });
+
+            var delBtn = document.createElement('button');
+            delBtn.className = 'cat-del-btn';
+            delBtn.textContent = '删除';
+            delBtn.addEventListener('click', function() {
+              if (!confirm('确定删除分类「' + cat + '」吗？')) return;
+              fetch('/api/admin/categories/' + encodeURIComponent(cat), { method: 'DELETE' })
+                .then(function(res) { return res.json(); })
+                .then(function(result) {
+                  if (result.error) { alert(result.error); return; }
+                  if (result.success) loadCategories();
+                });
+            });
+
+            actions.appendChild(renameBtn);
+            actions.appendChild(delBtn);
+            row.appendChild(nameSpan);
+            row.appendChild(actions);
+            el.appendChild(row);
+          });
+        });
+    }
+
+    // === 分类添加 ===
+    document.getElementById('cat-add-btn').addEventListener('click', function() {
+      var input = document.getElementById('cat-input');
+      var name = input.value.trim();
+      if (!name) return;
+      fetch('/api/admin/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name }),
+      })
+        .then(function(res) { return res.json(); })
+        .then(function(result) {
+          if (result.error) { alert(result.error); return; }
+          if (result.success) {
+            input.value = '';
+            loadCategories();
+          }
+        });
+    });
+
+    // === 弹窗逻辑 ===
+    var editingId = null;
+
+    function openModal(dish) {
+      editingId = dish ? dish.id : null;
+      document.getElementById('dish-id').value = dish ? dish.id : '';
+      document.getElementById('dish-name').value = dish ? dish.name : '';
+      document.getElementById('dish-image').value = dish ? (dish.image || '') : '';
+      document.getElementById('dish-ingredients').value = dish ? (dish.ingredients || []).join('、') : '';
+      document.getElementById('dish-steps').value = dish ? (dish.steps || []).join('\n') : '';
+      document.getElementById('dish-available').checked = dish ? dish.isAvailable : true;
+      document.getElementById('modal-title').textContent = dish ? '编辑菜品' : '添加菜品';
+
+      // 加载分类下拉
+      fetch('/api/admin/categories')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          var sel = document.getElementById('dish-category');
+          sel.innerHTML = '';
+          data.categories.forEach(function(c) {
+            var opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c;
+            sel.appendChild(opt);
+          });
+          if (dish) sel.value = dish.category;
+        });
+
+      document.getElementById('modal-overlay').style.display = 'flex';
+    }
+
+    function closeModal() {
+      document.getElementById('modal-overlay').style.display = 'none';
+    }
+
+    document.getElementById('add-dish-btn').addEventListener('click', function() { openModal(null); });
+    document.getElementById('modal-cancel').addEventListener('click', closeModal);
+    document.getElementById('modal-overlay').addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+
+    document.getElementById('dish-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      var ingredientsStr = document.getElementById('dish-ingredients').value.trim();
+      var ingredients = ingredientsStr ? ingredientsStr.split(/[、,，]/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
+
+      var stepsStr = document.getElementById('dish-steps').value.trim();
+      var steps = stepsStr ? stepsStr.split('\n').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+
+      var body = {
+        name: document.getElementById('dish-name').value.trim(),
+        category: document.getElementById('dish-category').value,
+        image: document.getElementById('dish-image').value.trim(),
+        ingredients: ingredients,
+        steps: steps,
+        isAvailable: document.getElementById('dish-available').checked,
+      };
+
+      var url = '/api/admin/dishes';
+      var method = 'POST';
+      if (editingId) {
+        url += '/' + editingId;
+        method = 'PUT';
+      }
+
+      fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+        .then(function(res) { return res.json(); })
+        .then(function(result) {
+          if (result.success) {
+            closeModal();
+            loadDishes();
+          }
+        });
+    });
+
+    // === Tab 切换 ===
+    document.querySelectorAll('.admin-tab').forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        document.querySelectorAll('.admin-tab').forEach(function(t) { t.classList.remove('active'); });
+        this.classList.add('active');
+
+        var view = this.dataset.view;
+        document.querySelectorAll('.admin-view').forEach(function(v) { v.style.display = 'none'; });
+        document.getElementById('view-' + view).style.display = '';
+
+        if (view === 'orders') loadOrders();
+        else if (view === 'dishes') loadDishes();
+        else if (view === 'categories') loadCategories();
+      });
+    });
+
+    // 默认加载订单
+    loadOrders();
+  </script>
+</body>
+</html>

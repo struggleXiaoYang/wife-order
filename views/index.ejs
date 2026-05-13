@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>老婆点菜</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="top-nav">
+    <h1 class="page-title">今天想吃什么？</h1>
+    <a class="history-link" href="/history">历史</a>
+  </div>
+
+  <div class="category-tabs" id="category-tabs">
+    <button class="tab-btn active" data-cat="">全部</button>
+  </div>
+
+  <input class="search-box" id="search-box" type="search" placeholder="搜索菜名…" autocomplete="off">
+
+  <div class="dish-grid">
+    <% dishes.forEach(function(dish) { %>
+      <div class="dish-card" data-category="<%= dish.category %>">
+        <% if (dish.image) { %>
+          <img class="dish-img" src="<%= dish.image %>" alt="<%= dish.name %>" loading="lazy"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+          <div class="dish-img-placeholder" style="display:none">🍽️</div>
+        <% } %>
+        <h3 class="dish-name"><%= dish.name %></h3>
+        <p class="dish-ingredients">食材：<%= dish.ingredients.join('、') %></p>
+        <button class="want-btn" data-id="<%= dish.id %>">想吃</button>
+      </div>
+    <% }); %>
+  </div>
+
+  <div class="empty-filter-msg" id="empty-filter-msg" style="display:none">
+    <div class="empty-filter-icon">📭</div>
+    <p>这个分类还没菜，去其他分类看看吧</p>
+  </div>
+
+  <!-- 底部浮窗 -->
+  <div class="bottom-bar">
+    <span class="count-text">已选 <strong class="count-num" id="count">0</strong> 道菜</span>
+    <button class="submit-btn" id="submit-btn">提交点菜</button>
+  </div>
+
+  <script>
+    // === 分类选项卡 ===
+    (function() {
+      var tabs = document.getElementById('category-tabs');
+      var cards = document.querySelectorAll('.dish-card');
+      var activeCat = '';
+
+      function applyFilters() {
+        var keyword = document.getElementById('search-box').value.trim().toLowerCase();
+        var hasVisible = false;
+        cards.forEach(function(card) {
+          var matchCat = !activeCat || card.dataset.category === activeCat;
+          var matchSearch = !keyword || card.querySelector('.dish-name').textContent.toLowerCase().indexOf(keyword) !== -1;
+          var visible = matchCat && matchSearch;
+          card.style.display = visible ? '' : 'none';
+          if (visible) hasVisible = true;
+        });
+        document.getElementById('empty-filter-msg').style.display = (activeCat && !hasVisible) ? '' : 'none';
+      }
+
+      // 获取分类列表
+      fetch('/api/menu')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          (data.categories || []).forEach(function(cat) {
+            var btn = document.createElement('button');
+            btn.className = 'tab-btn';
+            btn.textContent = cat;
+            btn.dataset.cat = cat;
+            tabs.appendChild(btn);
+          });
+        });
+
+      // 委托点击
+      tabs.addEventListener('click', function(e) {
+        var btn = e.target;
+        if (!btn.classList.contains('tab-btn')) return;
+
+        tabs.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+
+        activeCat = btn.dataset.cat;
+        applyFilters();
+      });
+
+      // 搜索
+      document.getElementById('search-box').addEventListener('input', function() {
+        applyFilters();
+      });
+    })();
+
+    // === 点餐逻辑 ===
+    const selected = new Set();
+
+    document.querySelectorAll('.want-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var id = this.dataset.id;
+        if (selected.has(id)) {
+          selected.delete(id);
+          this.textContent = '想吃';
+          this.classList.remove('on');
+        } else {
+          selected.add(id);
+          this.textContent = '取消';
+          this.classList.add('on');
+        }
+        document.getElementById('count').textContent = selected.size;
+      });
+    });
+
+    document.getElementById('submit-btn').addEventListener('click', function() {
+      if (selected.size === 0) {
+        alert('还没选菜呢～');
+        return;
+      }
+
+      fetch('/api/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dishIds: Array.from(selected) })
+      })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data.success) {
+            alert('点菜成功！');
+            selected.clear();
+            document.querySelectorAll('.want-btn').forEach(function(b) { b.textContent = '想吃'; b.classList.remove('on'); });
+            document.getElementById('count').textContent = 0;
+          }
+        });
+    });
+  </script>
+</body>
+</html>

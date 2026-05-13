@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>历史记录</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="top-nav">
+    <a class="back-link" href="/">&larr; 返回</a>
+    <h1 class="page-title">历史记录</h1>
+    <span class="nav-spacer"></span>
+  </div>
+
+  <div id="history-list"></div>
+
+  <script>
+    var STATUS_MAP = { pending: '待做', done: '已完成' };
+
+    function formatTime(iso) {
+      var d = new Date(iso);
+      var pad = function(n) { return n < 10 ? '0' + n : n; };
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+        + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+
+    fetch('/api/orders')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        var el = document.getElementById('history-list');
+
+        if (!data.orders || data.orders.length === 0) {
+          el.innerHTML = '<div class="history-empty">'
+            + '<div class="history-empty-icon">🍽️</div>'
+            + '<p class="history-empty-text">还没有点过餐哦～</p>'
+            + '<a class="history-empty-link" href="/">去点菜</a>'
+            + '</div>';
+          return;
+        }
+
+        el.innerHTML = '';
+        data.orders.forEach(function(order) {
+          var card = document.createElement('div');
+          card.className = 'history-card';
+
+          var head = document.createElement('div');
+          head.className = 'history-head';
+          head.innerHTML = '<span class="history-time">' + formatTime(order.createdAt) + '</span>'
+            + '<span class="history-status ' + (order.status === 'done' ? 'hstat-done' : 'hstat-pending') + '">'
+            + (order.status === 'done' ? '✓ ' : '') + (STATUS_MAP[order.status] || order.status) + '</span>';
+
+          var body = document.createElement('div');
+          body.className = 'history-dishes';
+          body.textContent = order.dishNames.join('、');
+
+          card.appendChild(head);
+          card.appendChild(body);
+          el.appendChild(card);
+        });
+      });
+  </script>
+</body>
+</html>
