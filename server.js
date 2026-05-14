@@ -80,6 +80,9 @@ app.get('/api/orders', (req, res) => {
         dishNames: o.dishIds.map(function(id) { return dishMap[id] || '未知菜品'; }),
         createdAt: o.createdAt,
         status: o.status,
+        rejectReason: o.rejectReason || '',
+        acceptedAt: o.acceptedAt || '',
+        completedAt: o.completedAt || '',
       };
     })
     .reverse();
@@ -130,6 +133,9 @@ app.get('/api/admin/orders', requireAdmin, (req, res) => {
         dishNames: o.dishIds.map(function(id) { return dishMap[id] || '未知菜品'; }),
         createdAt: o.createdAt,
         status: o.status,
+        rejectReason: o.rejectReason || '',
+        acceptedAt: o.acceptedAt || '',
+        completedAt: o.completedAt || '',
       };
     })
     .reverse();
@@ -245,13 +251,45 @@ app.put('/api/admin/dishes/:id', requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
-// 订单标为完成
-app.put('/api/admin/orders/:id', requireAdmin, (req, res) => {
+// 接单
+app.put('/api/admin/orders/:id/accept', requireAdmin, (req, res) => {
   const data = readData();
   const order = data.orders.find(function(o) { return o.id === req.params.id; });
   if (!order) return res.status(404).json({ error: '订单不存在' });
+  order.status = 'accepted';
+  order.acceptedAt = new Date().toISOString();
+  writeData(data);
+  res.json({ success: true });
+});
 
-  order.status = 'done';
+// 拒单
+app.put('/api/admin/orders/:id/reject', requireAdmin, (req, res) => {
+  const data = readData();
+  const order = data.orders.find(function(o) { return o.id === req.params.id; });
+  if (!order) return res.status(404).json({ error: '订单不存在' });
+  order.status = 'rejected';
+  order.rejectReason = req.body.reason || '';
+  writeData(data);
+  res.json({ success: true });
+});
+
+// 开始烹饪
+app.put('/api/admin/orders/:id/cook', requireAdmin, (req, res) => {
+  const data = readData();
+  const order = data.orders.find(function(o) { return o.id === req.params.id; });
+  if (!order) return res.status(404).json({ error: '订单不存在' });
+  order.status = 'cooking';
+  writeData(data);
+  res.json({ success: true });
+});
+
+// 完成
+app.put('/api/admin/orders/:id/complete', requireAdmin, (req, res) => {
+  const data = readData();
+  const order = data.orders.find(function(o) { return o.id === req.params.id; });
+  if (!order) return res.status(404).json({ error: '订单不存在' });
+  order.status = 'completed';
+  order.completedAt = new Date().toISOString();
   writeData(data);
   res.json({ success: true });
 });

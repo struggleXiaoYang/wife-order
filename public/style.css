@@ -315,23 +315,6 @@ body {
   color: #bbb;
 }
 
-.history-status {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 12px;
-}
-
-.hstat-pending {
-  background: #fff3e0;
-  color: #e65100;
-}
-
-.hstat-done {
-  background: #e8f5e9;
-  color: #2e7d32;
-}
-
 .history-dishes {
   font-size: 15px;
   color: #333;
@@ -364,5 +347,360 @@ body {
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
+}
+
+/* === 历史状态标签 === */
+.hst-pending {
+  font-size: 12px;
+  color: #e65100;
+}
+
+.hst-accepted {
+  font-size: 12px;
+  color: #1565c0;
+}
+
+.hst-cooking {
+  font-size: 12px;
+  color: #7b1fa2;
+}
+
+.hst-completed {
+  font-size: 12px;
+  color: #2e7d32;
+}
+
+.hst-rejected {
+  font-size: 12px;
+  color: #c62828;
+}
+
+/* === 历史拒单原因 === */
+.history-reason {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #c62828;
+  background: #fff5f5;
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+/* === 刷新按钮 === */
+.refresh-btn {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: 1.5px solid #ffd1c1;
+  background: #fff;
+  color: #FF7F50;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.refresh-btn:active {
+  background: #FF7F50;
+  color: #fff;
+}
+
+/* === 转盘触发按钮 === */
+.spin-btn-wrapper {
+  text-align: center;
+  padding: 4px 16px 10px;
+}
+
+.spin-btn {
+  background: linear-gradient(135deg, #FF7F50, #ff6a3d, #e86840);
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  padding: 12px 28px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+  max-width: 340px;
+  box-shadow: 0 4px 18px rgba(255, 127, 80, 0.4);
+  animation: float-btn 2s ease-in-out infinite;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.spin-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 8px 28px rgba(255, 127, 80, 0.55);
+}
+
+.spin-btn:active {
+  transform: scale(0.96);
+}
+
+.spin-btn-disabled {
+  background: #ddd;
+  color: #aaa;
+  cursor: not-allowed;
+  box-shadow: none;
+  animation: none;
+}
+
+.spin-btn-disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.spin-btn-hint {
+  font-size: 13px;
+  color: #bbb;
+  margin-top: 6px;
+}
+
+@keyframes float-btn {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+/* === 转盘遮罩 === */
+.wheel-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fade-in 0.25s ease;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.wheel-container {
+  background: #fff;
+  border-radius: 24px;
+  padding: 24px 20px 20px;
+  width: calc(100% - 40px);
+  max-width: 360px;
+  text-align: center;
+  position: relative;
+}
+
+.wheel-close {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  border: none;
+  background: none;
+  font-size: 28px;
+  color: #ccc;
+  cursor: pointer;
+  line-height: 1;
+}
+
+/* === 指针 === */
+.wheel-pointer-wrap {
+  position: relative;
+  z-index: 2;
+  margin-bottom: -14px;
+}
+
+.wheel-pointer {
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 22px solid #FF7F50;
+  margin: 0 auto;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+}
+
+/* === Canvas 转盘 === */
+#wheel-canvas {
+  display: block;
+  margin: 0 auto;
+  max-width: 300px;
+  width: 100%;
+  height: auto;
+}
+
+/* === 开始按钮 === */
+.wheel-start-btn {
+  margin-top: 14px;
+  padding: 10px 36px;
+  border: none;
+  background: linear-gradient(135deg, #FF7F50, #e86840);
+  color: #fff;
+  border-radius: 24px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(255, 127, 80, 0.35);
+  transition: transform 0.2s ease;
+}
+
+.wheel-start-btn:active {
+  transform: scale(0.94);
+}
+
+/* === 结果卡片 === */
+.wheel-result {
+  animation: fade-in 0.3s ease;
+}
+
+.wheel-result-img {
+  width: 120px;
+  height: 120px;
+  margin: 0 auto 12px;
+  background: #faf5f0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 56px;
+  overflow: hidden;
+}
+
+.wheel-result-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.wheel-result-ingredients {
+  font-size: 12px;
+  color: #aaa;
+  margin-bottom: 12px;
+}
+
+.wheel-result-msg {
+  font-size: 14px;
+  color: #FF7F50;
+  font-weight: 600;
+  margin-bottom: 18px;
+}
+
+.wheel-result-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.wheel-result-confirm {
+  flex: 2;
+  padding: 11px 0;
+  border: none;
+  background: linear-gradient(135deg, #FF7F50, #ff6a3d);
+  color: #fff;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(255, 127, 80, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.wheel-result-confirm:active {
+  transform: scale(0.94);
+}
+
+.wheel-result-respin {
+  flex: 1;
+  padding: 10px 0;
+  border: 1.5px solid #ddd;
+  background: #fff;
+  color: #999;
+  border-radius: 14px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.wheel-result-respin:active {
+  background: #f5f5f5;
+}
+
+/* === Toast === */
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  z-index: 200;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.toast.toast-show {
+  opacity: 1;
+}
+
+/* === 飞行动画小圆点 === */
+.flying-dot {
+  position: fixed;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff6b8a, #FF7F50);
+  box-shadow: 0 4px 14px rgba(255, 107, 138, 0.5);
+  z-index: 50;
+  pointer-events: none;
+}
+
+/* === 提交庆祝遮罩 === */
+.celebrate-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: fade-in 0.3s ease;
+}
+
+.celebrate-text {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.35), 0 0 40px rgba(255,127,80,0.5);
+  animation: celeb-text-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards, fade-out 0.6s 2s ease forwards;
+  z-index: 2;
+  text-align: center;
+  padding: 0 20px;
+}
+
+@keyframes celeb-text-pop {
+  0%   { transform: scale(0.3); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* === 飘心 === */
+.floating-heart {
+  position: fixed;
+  z-index: 1;
+  pointer-events: none;
+  animation: heart-rise 2.5s ease-out forwards;
+  animation-duration: var(--dur, 2.5s);
+  --wiggle: 0px;
+  --rise: -500px;
+}
+
+@keyframes heart-rise {
+  0%   { transform: translateY(0) translateX(0) scale(0.4); opacity: 1; }
+  20%  { transform: translateY(calc(var(--rise) * 0.2)) translateX(calc(var(--wiggle) * 0.5)) scale(0.9); opacity: 1; }
+  50%  { transform: translateY(calc(var(--rise) * 0.5)) translateX(calc(var(--wiggle) * -0.3)) scale(1.1); opacity: 1; }
+  80%  { transform: translateY(calc(var(--rise) * 0.8)) translateX(calc(var(--wiggle) * 1)) scale(0.9); opacity: 0.7; }
+  100% { transform: translateY(var(--rise)) translateX(calc(var(--wiggle) * 0.2)) scale(0.5); opacity: 0; }
 }
 

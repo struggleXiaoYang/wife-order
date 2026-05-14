@@ -12,6 +12,11 @@
     <a class="history-link" href="/history">历史</a>
   </div>
 
+  <div class="spin-btn-wrapper">
+    <button class="spin-btn" id="spin-btn">🎰 今天吃什么？点我决定！</button>
+    <p class="spin-btn-hint" id="spin-btn-hint" style="display:none">菜品不够转盘玩，先让老公多加几道菜吧～</p>
+  </div>
+
   <div class="category-tabs" id="category-tabs">
     <button class="tab-btn active" data-cat="">全部</button>
   </div>
@@ -37,6 +42,29 @@
     <div class="empty-filter-icon">📭</div>
     <p>这个分类还没菜，去其他分类看看吧</p>
   </div>
+
+  <!-- 转盘遮罩 -->
+  <div class="wheel-overlay" id="wheel-overlay" style="display:none">
+    <div class="wheel-container">
+      <button class="wheel-close" id="wheel-close">&times;</button>
+      <div class="wheel-pointer-wrap"><div class="wheel-pointer"></div></div>
+      <canvas id="wheel-canvas" width="300" height="300"></canvas>
+      <button class="wheel-start-btn" id="wheel-start-btn">🎯 开始</button>
+      <div class="wheel-result" id="wheel-result" style="display:none">
+        <div class="wheel-result-img" id="wheel-result-img">🍽️</div>
+        <h3 class="wheel-result-name" id="wheel-result-name"></h3>
+        <p class="wheel-result-ingredients" id="wheel-result-ingredients"></p>
+        <p class="wheel-result-msg" id="wheel-result-msg"></p>
+        <div class="wheel-result-btns">
+          <button class="wheel-result-confirm" id="wheel-result-confirm">👌 就它了！</button>
+          <button class="wheel-result-respin" id="wheel-result-respin">🔄 再转一次</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast" style="display:none"></div>
 
   <!-- 底部浮窗 -->
   <div class="bottom-bar">
@@ -101,6 +129,7 @@
     document.querySelectorAll('.want-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var id = this.dataset.id;
+        var countEl = document.getElementById('count');
         if (selected.has(id)) {
           selected.delete(id);
           this.textContent = '想吃';
@@ -109,10 +138,263 @@
           selected.add(id);
           this.textContent = '取消';
           this.classList.add('on');
+
+          // 飞行动画
+          var btnRect = this.getBoundingClientRect();
+          var endRect = countEl.getBoundingClientRect();
+          var dx = endRect.left + endRect.width / 2 - (btnRect.left + btnRect.width / 2);
+          var dy = endRect.top + endRect.height / 2 - (btnRect.top + btnRect.height / 2);
+
+          var dot = document.createElement('div');
+          dot.className = 'flying-dot';
+          dot.style.left = (btnRect.left + btnRect.width / 2 - 15) + 'px';
+          dot.style.top = (btnRect.top + btnRect.height / 2 - 15) + 'px';
+          document.body.appendChild(dot);
+
+          dot.animate([
+            { transform: 'translate(0, 0) scale(1)', offset: 0 },
+            { transform: 'translate(' + (dx * 0.35) + 'px, ' + (dy * 0.1) + 'px) scale(1.2)', offset: 0.35 },
+            { transform: 'translate(' + dx + 'px, ' + dy + 'px) scale(0)', offset: 1 },
+          ], { duration: 480, easing: 'cubic-bezier(0.25, 0.8, 0.25, 1)' }).onfinish = function() {
+            dot.remove();
+            countEl.style.transform = 'scale(1.55)';
+            countEl.style.transition = 'transform 0.15s ease';
+            setTimeout(function() { countEl.style.transform = 'scale(1)'; }, 180);
+          };
         }
-        document.getElementById('count').textContent = selected.size;
+        countEl.textContent = selected.size;
       });
     });
+
+    // === 趣味大转盘 ===
+    (function() {
+      var dishes = [];
+      document.querySelectorAll('.dish-card').forEach(function(card) {
+        dishes.push({
+          id: card.querySelector('.want-btn').dataset.id,
+          name: card.querySelector('.dish-name').textContent,
+          ingredients: card.querySelector('.dish-ingredients').textContent.replace('食材：', ''),
+          image: card.querySelector('.dish-img') ? card.querySelector('.dish-img').src : '',
+        });
+      });
+
+      var btn = document.getElementById('spin-btn');
+      var hint = document.getElementById('spin-btn-hint');
+      var overlay = document.getElementById('wheel-overlay');
+      var canvas = document.getElementById('wheel-canvas');
+      var ctx = canvas.getContext('2d');
+      var startBtn = document.getElementById('wheel-start-btn');
+      var closeBtn = document.getElementById('wheel-close');
+      var resultDiv = document.getElementById('wheel-result');
+      var resultImg = document.getElementById('wheel-result-img');
+      var resultName = document.getElementById('wheel-result-name');
+      var resultIngr = document.getElementById('wheel-result-ingredients');
+      var resultMsg = document.getElementById('wheel-result-msg');
+      var confirmBtn = document.getElementById('wheel-result-confirm');
+      var respinBtn = document.getElementById('wheel-result-respin');
+      var toast = document.getElementById('toast');
+
+      var MSGS = [
+        '天选之菜！就它了，不接受反驳 🙌',
+        '命运的齿轮转向了它……认命吧 🍽️',
+        '今天灶神爷钦点这道菜 🔥',
+        '转盘说了算，不准挑食！😤',
+      ];
+
+      var COLORS = ['#FF7F50', '#ffb3ba', '#fff0ba', '#bae1ff', '#baffc9', '#ffd9b3', '#ffc3a0', '#f0d9ff'];
+
+      if (dishes.length < 2) {
+        btn.disabled = true;
+        btn.classList.add('spin-btn-disabled');
+        hint.style.display = '';
+        return;
+      }
+
+      var N = dishes.length;
+      var ARC = (2 * Math.PI) / N;
+      var W = canvas.width, CX = W / 2, CY = W / 2, R = 130;
+      var angle = 0, spinning = false;
+      var animId = null;
+      var winningIdx = -1;
+
+      function drawWheel() {
+        ctx.clearRect(0, 0, W, W);
+        for (var i = 0; i < N; i++) {
+          var start = angle + i * ARC;
+          var end = start + ARC;
+          ctx.beginPath();
+          ctx.moveTo(CX, CY);
+          ctx.arc(CX, CY, R, start, end);
+          ctx.closePath();
+          ctx.fillStyle = COLORS[i % COLORS.length];
+          ctx.fill();
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          // 扇形文字
+          ctx.save();
+          ctx.translate(CX, CY);
+          ctx.rotate(start + ARC / 2);
+          ctx.textAlign = 'right';
+          ctx.fillStyle = '#4a2f1a';
+          ctx.font = 'bold 13px "PingFang SC","Microsoft YaHei",sans-serif';
+          var txt = dishes[i].name.length > 4 ? dishes[i].name.slice(0, 4) + '…' : dishes[i].name;
+          ctx.fillText(txt, R - 16, 5);
+          ctx.restore();
+        }
+
+        // 圆心
+        ctx.beginPath();
+        ctx.arc(CX, CY, 28, 0, 2 * Math.PI);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.strokeStyle = '#FF7F50';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.fillStyle = '#FF7F50';
+        ctx.font = 'bold 11px "PingFang SC","Microsoft YaHei",sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('GO', CX, CY);
+      }
+
+      function spin() {
+        if (spinning) return;
+        spinning = true;
+        startBtn.style.display = 'none';
+        resultDiv.style.display = 'none';
+        canvas.style.display = '';
+        winningIdx = -1;
+
+        var total = 6 + Math.random() * 6; // 随机6~12圈
+        var targetAngle = angle + total * 2 * Math.PI;
+        var startAngle = angle;
+        var duration = 3800; // ms
+        var startTime = performance.now();
+
+        function anim(now) {
+          var elapsed = now - startTime;
+          var t = Math.min(elapsed / duration, 1);
+          // ease-out: 1 - (1-t)^3
+          var ease = 1 - Math.pow(1 - t, 3);
+          angle = startAngle + (targetAngle - startAngle) * ease;
+          drawWheel();
+
+          if (t < 1) {
+            animId = requestAnimationFrame(anim);
+          } else {
+            // 停转
+            spinning = false;
+            angle = targetAngle;
+            drawWheel();
+
+            // 指针在12点方向 = -PI/2 = 270deg（标准坐标）
+            // 计算指针指向哪个扇区
+            var pointerAngle = (2 * Math.PI * 1.5) % (2 * Math.PI); // 270deg in radians
+            var normalized = ((pointerAngle - angle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+            winningIdx = Math.floor(normalized / ARC) % N;
+
+            // 闪烁2次
+            var flashes = 0;
+            var origColor = COLORS[winningIdx % COLORS.length];
+            function flash() {
+              if (flashes >= 6) {
+                showResult();
+                return;
+              }
+              var hi = flashes % 2 === 0;
+              COLORS[winningIdx % COLORS.length] = hi ? '#ffeb3b' : origColor;
+              drawWheel();
+              flashes++;
+              setTimeout(flash, 250);
+            }
+            flash();
+          }
+        }
+
+        animId = requestAnimationFrame(anim);
+      }
+
+      function showResult() {
+        canvas.style.display = 'none';
+        resultDiv.style.display = '';
+        var dish = dishes[winningIdx];
+        resultName.textContent = dish.name;
+        resultIngr.textContent = '食材：' + dish.ingredients;
+        resultMsg.textContent = MSGS[Math.floor(Math.random() * MSGS.length)];
+        resultImg.textContent = dish.image ? '' : '🍽️';
+        if (dish.image) {
+          var img = document.createElement('img');
+          img.src = dish.image;
+          img.style.width = '100%';
+          img.style.height = '100%';
+          img.style.objectFit = 'cover';
+          img.style.borderRadius = '8px';
+          img.onerror = function() { resultImg.textContent = '🍽️'; };
+          resultImg.innerHTML = '';
+          resultImg.appendChild(img);
+        }
+        startBtn.style.display = 'none';
+      }
+
+      function showToast(msg) {
+        toast.textContent = msg;
+        toast.style.display = '';
+        toast.classList.remove('toast-show');
+        void toast.offsetWidth;
+        toast.classList.add('toast-show');
+        setTimeout(function() { toast.style.display = 'none'; }, 2000);
+      }
+
+      btn.addEventListener('click', function() {
+        overlay.style.display = 'flex';
+        resultDiv.style.display = 'none';
+        canvas.style.display = '';
+        startBtn.style.display = '';
+        angle = 0;
+        drawWheel();
+      });
+
+      closeBtn.addEventListener('click', function() {
+        overlay.style.display = 'none';
+        if (animId) cancelAnimationFrame(animId);
+        spinning = false;
+      });
+
+      overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) {
+          overlay.style.display = 'none';
+          if (animId) cancelAnimationFrame(animId);
+          spinning = false;
+        }
+      });
+
+      startBtn.addEventListener('click', spin);
+      respinBtn.addEventListener('click', function() {
+        resultDiv.style.display = 'none';
+        canvas.style.display = '';
+        startBtn.style.display = '';
+        angle = 0;
+        drawWheel();
+        spin();
+      });
+
+      confirmBtn.addEventListener('click', function() {
+        var dish = dishes[winningIdx];
+        var id = dish.id;
+        selected.add(id);
+        var wb = document.querySelector('.want-btn[data-id="' + id + '"]');
+        if (wb) { wb.textContent = '取消'; wb.classList.add('on'); }
+        document.getElementById('count').textContent = selected.size;
+        overlay.style.display = 'none';
+        if (animId) cancelAnimationFrame(animId);
+        spinning = false;
+        showToast('已加入点餐单～');
+      });
+
+      drawWheel();
+    })();
 
     document.getElementById('submit-btn').addEventListener('click', function() {
       if (selected.size === 0) {
@@ -128,10 +410,55 @@
         .then(function(res) { return res.json(); })
         .then(function(data) {
           if (data.success) {
-            alert('点菜成功！');
-            selected.clear();
-            document.querySelectorAll('.want-btn').forEach(function(b) { b.textContent = '想吃'; b.classList.remove('on'); });
-            document.getElementById('count').textContent = 0;
+            // 飘心庆祝
+            (function celebrate() {
+              var PHRASES = [
+                '菜单已送达厨房！🧑‍🍳',
+                '老公收到！准备大展身手 🔥',
+                '坐等投喂吧～😋',
+                '今天也是被爱的一天 💕',
+              ];
+              var HEART_COLORS = ['#ff6b8a', '#FF7F50', '#ff4d6d', '#ffb3ba', '#ff8a80', '#f48fb1'];
+
+              var overlay = document.createElement('div');
+              overlay.className = 'celebrate-overlay';
+              document.body.appendChild(overlay);
+
+              // 随机文案
+              var text = document.createElement('div');
+              text.className = 'celebrate-text';
+              text.textContent = PHRASES[Math.floor(Math.random() * PHRASES.length)];
+              overlay.appendChild(text);
+
+              // 飘心
+              var vw = window.innerWidth;
+              var vh = window.innerHeight;
+              var count = 5 + Math.floor(Math.random() * 4); // 5~8
+              for (var i = 0; i < count; i++) {
+                var heart = document.createElement('div');
+                heart.className = 'floating-heart';
+                heart.textContent = '❤️';
+                heart.style.left = (vw * 0.15 + Math.random() * vw * 0.7) + 'px';
+                heart.style.bottom = '0px';
+                heart.style.fontSize = (20 + Math.random() * 30) + 'px';
+                heart.style.color = HEART_COLORS[Math.floor(Math.random() * HEART_COLORS.length)];
+                var wiggle = (Math.random() - 0.5) * 60;
+                var rise = -(vh * 0.7 + Math.random() * vh * 0.3);
+                var dur = 2000 + Math.random() * 1000;
+                heart.style.animationDuration = dur + 'ms';
+                heart.style.setProperty('--wiggle', wiggle + 'px');
+                heart.style.setProperty('--rise', rise + 'px');
+                overlay.appendChild(heart);
+              }
+
+              // 清理
+              setTimeout(function() {
+                overlay.remove();
+                selected.clear();
+                document.querySelectorAll('.want-btn').forEach(function(b) { b.textContent = '想吃'; b.classList.remove('on'); });
+                document.getElementById('count').textContent = 0;
+              }, 2600);
+            })();
           }
         });
     });

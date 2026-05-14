@@ -116,14 +116,111 @@ body {
   border-radius: 12px;
 }
 
-.status-pending {
+/* === 订单状态标签 === */
+.st-pending {
   background: #fff3e0;
   color: #e65100;
 }
 
-.status-done {
+.st-accepted {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.st-cooking {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.st-completed {
   background: #e8f5e9;
   color: #2e7d32;
+}
+
+.st-rejected {
+  background: #ffebee;
+  color: #c62828;
+}
+
+/* === 订单操作按钮 === */
+.order-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.obtn-accept {
+  flex: 1;
+  padding: 6px 0;
+  border: none;
+  background: #4caf50;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.obtn-accept:active {
+  opacity: 0.85;
+}
+
+.obtn-reject {
+  flex: 1;
+  padding: 6px 0;
+  border: none;
+  background: #e53935;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.obtn-reject:active {
+  opacity: 0.85;
+}
+
+.obtn-cook {
+  flex: 1;
+  padding: 6px 0;
+  border: none;
+  background: #ff9800;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.obtn-cook:active {
+  opacity: 0.85;
+}
+
+.obtn-done {
+  flex: 1;
+  padding: 6px 0;
+  border: none;
+  background: #4caf50;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.obtn-done:active {
+  opacity: 0.85;
+}
+
+/* === 拒单原因 === */
+.order-reject-reason {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #c62828;
+  background: #fff5f5;
+  padding: 4px 10px;
+  border-radius: 8px;
 }
 
 .order-dishes {
@@ -138,30 +235,6 @@ body {
   padding: 60px 20px;
   font-size: 15px;
   color: #bbb;
-}
-
-/* === 标记完成按钮 === */
-.complete-btn {
-  margin-top: 8px;
-  padding: 5px 16px;
-  border: 1.5px solid #ff6b35;
-  background: #fff;
-  color: #ff6b35;
-  border-radius: 14px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.complete-btn:active {
-  background: #ff6b35;
-  color: #fff;
-}
-
-.complete-btn:disabled {
-  border-color: #ccc;
-  color: #ccc;
-  cursor: default;
 }
 
 /* === Tab 导航 === */

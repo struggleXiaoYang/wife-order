@@ -100,7 +100,8 @@
         "3"
       ],
       "createdAt": "2026-05-13T22:10:08.360Z",
-      "status": "done"
+      "status": "completed",
+      "completedAt": "2026-05-13T22:15:00.000Z"
     },
     {
       "id": "1778712360840",
@@ -109,22 +110,23 @@
         "2"
       ],
       "createdAt": "2026-05-13T22:46:00.841Z",
+      "status": "rejected",
+      "rejectReason": "今天排骨没了，换别的吧"
+    },
+    {
+      "id": "1778720310203",
+      "dishIds": [
+        "1"
+      ],
+      "createdAt": "2026-05-14T00:58:30.203Z",
       "status": "pending"
     },
     {
-      "id": "1778712541984",
+      "id": "1778720555854",
       "dishIds": [
-        "3"
+        "2"
       ],
-      "createdAt": "2026-05-13T22:49:01.984Z",
-      "status": "pending"
-    },
-    {
-      "id": "1778712764300",
-      "dishIds": [
-        "4"
-      ],
-      "createdAt": "2026-05-13T22:52:44.301Z",
+      "createdAt": "2026-05-14T01:02:35.854Z",
       "status": "pending"
     }
   ]

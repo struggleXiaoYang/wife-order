@@ -74,7 +74,7 @@
   </div>
 
   <script>
-    var STATUS_MAP = { pending: '待做', done: '已完成' };
+    var STATUS_MAP = { pending: '待接单', accepted: '已接单', cooking: '烹饪中', completed: '已完成', rejected: '已拒单' };
 
     function formatTime(iso) {
       var d = new Date(iso);
@@ -103,7 +103,7 @@
             var head = document.createElement('div');
             head.className = 'order-head';
             head.innerHTML = '<span class="order-time">' + formatTime(order.createdAt) + '</span>'
-              + '<span class="order-status status-' + order.status + '">' + (STATUS_MAP[order.status] || order.status) + '</span>';
+              + '<span class="order-status st-' + order.status + '">' + (STATUS_MAP[order.status] || order.status) + '</span>';
 
             var body = document.createElement('div');
             body.className = 'order-dishes';
@@ -112,24 +112,70 @@
             card.appendChild(head);
             card.appendChild(body);
 
-            if (order.status === 'pending') {
-              var btn = document.createElement('button');
-              btn.className = 'complete-btn';
-              btn.textContent = '标记完成';
-              btn.addEventListener('click', function() {
-                fetch('/api/admin/orders/' + order.id, { method: 'PUT' })
-                  .then(function(res) { return res.json(); })
-                  .then(function(result) {
-                    if (result.success) {
-                      head.querySelector('.order-status').textContent = '已完成';
-                      head.querySelector('.order-status').className = 'order-status status-done';
-                      btn.disabled = true;
-                    }
-                  });
-              });
-              card.appendChild(btn);
+            // 拒单原因
+            if (order.status === 'rejected' && order.rejectReason) {
+              var reason = document.createElement('div');
+              reason.className = 'order-reject-reason';
+              reason.textContent = '原因：' + order.rejectReason;
+              card.appendChild(reason);
             }
 
+            // 按钮区
+            var btns = document.createElement('div');
+            btns.className = 'order-btns';
+
+            if (order.status === 'pending') {
+              // 接单
+              var acceptBtn = document.createElement('button');
+              acceptBtn.className = 'obtn-accept';
+              acceptBtn.textContent = '接单';
+              acceptBtn.addEventListener('click', function() {
+                fetch('/api/admin/orders/' + order.id + '/accept', { method: 'PUT' })
+                  .then(function(res) { return res.json(); })
+                  .then(function(r) { if (r.success) loadOrders(); });
+              });
+
+              // 拒单
+              var rejectBtn = document.createElement('button');
+              rejectBtn.className = 'obtn-reject';
+              rejectBtn.textContent = '拒单';
+              rejectBtn.addEventListener('click', function() {
+                var reason = prompt('请输入拒单原因：');
+                if (reason === null) return; // 点取消
+                fetch('/api/admin/orders/' + order.id + '/reject', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ reason: reason.trim() }),
+                })
+                  .then(function(res) { return res.json(); })
+                  .then(function(r) { if (r.success) loadOrders(); });
+              });
+
+              btns.appendChild(acceptBtn);
+              btns.appendChild(rejectBtn);
+            } else if (order.status === 'accepted') {
+              var cookBtn = document.createElement('button');
+              cookBtn.className = 'obtn-cook';
+              cookBtn.textContent = '开始烹饪';
+              cookBtn.addEventListener('click', function() {
+                fetch('/api/admin/orders/' + order.id + '/cook', { method: 'PUT' })
+                  .then(function(res) { return res.json(); })
+                  .then(function(r) { if (r.success) loadOrders(); });
+              });
+              btns.appendChild(cookBtn);
+            } else if (order.status === 'cooking') {
+              var doneBtn = document.createElement('button');
+              doneBtn.className = 'obtn-done';
+              doneBtn.textContent = '完成';
+              doneBtn.addEventListener('click', function() {
+                fetch('/api/admin/orders/' + order.id + '/complete', { method: 'PUT' })
+                  .then(function(res) { return res.json(); })
+                  .then(function(r) { if (r.success) loadOrders(); });
+              });
+              btns.appendChild(doneBtn);
+            }
+
+            card.appendChild(btns);
             el.appendChild(card);
           });
         });

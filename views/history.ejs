@@ -10,13 +10,19 @@
   <div class="top-nav">
     <a class="back-link" href="/">&larr; 返回</a>
     <h1 class="page-title">历史记录</h1>
-    <span class="nav-spacer"></span>
+    <button class="refresh-btn" id="refresh-btn">刷新</button>
   </div>
 
   <div id="history-list"></div>
 
   <script>
-    var STATUS_MAP = { pending: '待做', done: '已完成' };
+    var STATUS_MAP = {
+      pending:   '<span class="hst-pending">⏳ 等待接单</span>',
+      accepted:  '<span class="hst-accepted">👌 已接单</span>',
+      cooking:   '<span class="hst-cooking">🔥 正在做</span>',
+      completed: '<span class="hst-completed">✅ 已完成</span>',
+      rejected:  '<span class="hst-rejected">😭 被拒了</span>',
+    };
 
     function formatTime(iso) {
       var d = new Date(iso);
@@ -25,40 +31,53 @@
         + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
     }
 
-    fetch('/api/orders')
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
-        var el = document.getElementById('history-list');
+    function loadHistory() {
+      fetch('/api/orders')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          var el = document.getElementById('history-list');
 
-        if (!data.orders || data.orders.length === 0) {
-          el.innerHTML = '<div class="history-empty">'
-            + '<div class="history-empty-icon">🍽️</div>'
-            + '<p class="history-empty-text">还没有点过餐哦～</p>'
-            + '<a class="history-empty-link" href="/">去点菜</a>'
-            + '</div>';
-          return;
-        }
+          if (!data.orders || data.orders.length === 0) {
+            el.innerHTML = '<div class="history-empty">'
+              + '<div class="history-empty-icon">🍽️</div>'
+              + '<p class="history-empty-text">还没有点过餐哦～</p>'
+              + '<a class="history-empty-link" href="/">去点菜</a>'
+              + '</div>';
+            return;
+          }
 
-        el.innerHTML = '';
-        data.orders.forEach(function(order) {
-          var card = document.createElement('div');
-          card.className = 'history-card';
+          el.innerHTML = '';
+          data.orders.forEach(function(order) {
+            var card = document.createElement('div');
+            card.className = 'history-card';
 
-          var head = document.createElement('div');
-          head.className = 'history-head';
-          head.innerHTML = '<span class="history-time">' + formatTime(order.createdAt) + '</span>'
-            + '<span class="history-status ' + (order.status === 'done' ? 'hstat-done' : 'hstat-pending') + '">'
-            + (order.status === 'done' ? '✓ ' : '') + (STATUS_MAP[order.status] || order.status) + '</span>';
+            var head = document.createElement('div');
+            head.className = 'history-head';
+            head.innerHTML = '<span class="history-time">' + formatTime(order.createdAt) + '</span>'
+              + (STATUS_MAP[order.status] || order.status);
 
-          var body = document.createElement('div');
-          body.className = 'history-dishes';
-          body.textContent = order.dishNames.join('、');
+            var body = document.createElement('div');
+            body.className = 'history-dishes';
+            body.textContent = order.dishNames.join('、');
 
-          card.appendChild(head);
-          card.appendChild(body);
-          el.appendChild(card);
+            card.appendChild(head);
+            card.appendChild(body);
+
+            // 拒单原因
+            if (order.status === 'rejected' && order.rejectReason) {
+              var reason = document.createElement('div');
+              reason.className = 'history-reason';
+              reason.textContent = '原因：' + order.rejectReason;
+              card.appendChild(reason);
+            }
+
+            el.appendChild(card);
+          });
         });
-      });
+    }
+
+    document.getElementById('refresh-btn').addEventListener('click', loadHistory);
+    loadHistory();
   </script>
 </body>
 </html>
