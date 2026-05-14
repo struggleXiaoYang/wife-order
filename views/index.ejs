@@ -267,16 +267,19 @@
         canvas.style.display = '';
         winningIdx = -1;
 
-        var total = 6 + Math.random() * 6; // 随机6~12圈
-        var targetAngle = angle + total * 2 * Math.PI;
+        // 归一化当前角度到 [0, 2π)，避免累计大数精度丢失
+        angle = ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
+        // 随机 5~12 圈，连续均匀分布
+        var extraRads = (5 + Math.random() * 7) * 2 * Math.PI;
+        var targetAngle = angle + extraRads;
         var startAngle = angle;
-        var duration = 3800; // ms
+        var duration = 3800;
         var startTime = performance.now();
 
         function anim(now) {
           var elapsed = now - startTime;
           var t = Math.min(elapsed / duration, 1);
-          // ease-out: 1 - (1-t)^3
           var ease = 1 - Math.pow(1 - t, 3);
           angle = startAngle + (targetAngle - startAngle) * ease;
           drawWheel();
@@ -284,18 +287,21 @@
           if (t < 1) {
             animId = requestAnimationFrame(anim);
           } else {
-            // 停转
             spinning = false;
-            angle = targetAngle;
+            angle = ((targetAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
             drawWheel();
 
-            // 指针在12点方向 = -PI/2 = 270deg（标准坐标）
-            // 计算指针指向哪个扇区
-            var pointerAngle = (2 * Math.PI * 1.5) % (2 * Math.PI); // 270deg in radians
-            var normalized = ((pointerAngle - angle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
-            winningIdx = Math.floor(normalized / ARC) % N;
+            // 指针固定在 12 点钟方向
+            // Canvas: 0=3点钟, π/2=6点, π=9点, 3π/2=12点
+            var pointerAngle = Math.PI * 1.5;
+            // 从扇区0起点(angle)到指针的角位移
+            var offset = ((pointerAngle - angle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+            // 该位移落在第几个扇区
+            winningIdx = Math.floor(offset / ARC);
+            // 浮点边界保护：确保 idx 在 [0, N-1]
+            if (winningIdx >= N) winningIdx = N - 1;
+            if (winningIdx < 0) winningIdx = 0;
 
-            // 闪烁2次
             var flashes = 0;
             var origColor = COLORS[winningIdx % COLORS.length];
             function flash() {
