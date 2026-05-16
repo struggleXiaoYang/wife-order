@@ -3,7 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const mysql = require('mysql2/promise');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const { sendSms } = require('./services/smsService');
 const multer = require('multer');
 const crypto = require('crypto');
