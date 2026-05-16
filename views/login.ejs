@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 - 家庭私厨</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="auth-body">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <h1 class="auth-title">今天想吃点什么？</h1>
+      <p class="auth-subtitle">登录你的家庭私厨</p>
+
+      <form class="auth-form" id="login-form">
+        <div class="auth-field">
+          <label class="auth-label" for="phone">手机号</label>
+          <input
+            class="auth-input"
+            type="tel"
+            id="phone"
+            name="phone"
+            placeholder="请输入手机号"
+            maxlength="11"
+            autocomplete="tel"
+            required
+            autofocus
+          >
+          <span class="auth-error" id="phone-error"></span>
+        </div>
+
+        <div class="auth-field">
+          <label class="auth-label" for="password">密码</label>
+          <input
+            class="auth-input"
+            type="password"
+            id="password"
+            name="password"
+            placeholder="请输入密码"
+            autocomplete="current-password"
+            required
+          >
+          <span class="auth-error" id="password-error"></span>
+        </div>
+
+        <div class="auth-error-msg" id="form-error" style="display:none"></div>
+
+        <button class="auth-btn-primary" type="submit">登录</button>
+      </form>
+
+      <div class="auth-links">
+        <a class="auth-link" href="/register">没有账号？<span class="auth-link-strong">立即注册</span></a>
+        <a class="auth-link auth-link-dim" href="/forgot-password">忘记密码？</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" style="display:none"></div>
+
+  <script>
+    function showToast(msg) {
+      var t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.display = '';
+      t.classList.remove('toast-show');
+      void t.offsetWidth;
+      t.classList.add('toast-show');
+      setTimeout(function() { t.style.display = 'none'; }, 2000);
+    }
+
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      var phone = document.getElementById('phone').value.trim();
+      var password = document.getElementById('password').value;
+
+      document.getElementById('phone-error').textContent = '';
+      document.getElementById('password-error').textContent = '';
+      document.getElementById('form-error').style.display = 'none';
+
+      var valid = true;
+      if (!phone || !/^1\d{10}$/.test(phone)) {
+        document.getElementById('phone-error').textContent = '请输入正确的11位手机号';
+        valid = false;
+      }
+      if (!password) {
+        document.getElementById('password-error').textContent = '请输入密码';
+        valid = false;
+      }
+      if (!valid) return;
+
+      var btn = this.querySelector('.auth-btn-primary');
+      btn.disabled = true;
+      btn.textContent = '登录中…';
+
+      fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone, password: password }),
+      })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data.success) {
+            window.location.href = '/';
+          } else {
+            document.getElementById('form-error').style.display = '';
+            document.getElementById('form-error').textContent = data.message || '登录失败';
+            btn.disabled = false;
+            btn.textContent = '登录';
+          }
+        })
+        .catch(function() {
+          showToast('网络错误，请重试');
+          btn.disabled = false;
+          btn.textContent = '登录';
+        });
+    });
+  </script>
+</body>
+</html>

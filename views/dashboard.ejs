@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>家庭私厨 · 管理后台</title>
+  <link rel="stylesheet" href="/dashboard.css">
+</head>
+<body class="dashboard-page">
+
+<% if (!loggedIn) { %>
+  <!-- 登录页 -->
+  <div class="dash-login-wrap">
+    <div class="dash-login-card">
+      <h1 class="dash-login-title">家庭私厨 · 管理后台</h1>
+      <form method="POST" action="/dashboard/login">
+        <input class="dash-login-input" type="text" name="username" placeholder="管理员账号" autofocus required>
+        <input class="dash-login-input" type="password" name="password" placeholder="管理员密码" required>
+        <% if (locals.error) { %><p class="dash-login-error"><%= error %></p><% } %>
+        <button class="dash-login-btn" type="submit">登录</button>
+      </form>
+    </div>
+  </div>
+
+<% } else { %>
+
+  <!-- 管理后台布局 -->
+  <div class="dashboard-layout">
+
+    <!-- 移动端遮罩 -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- 左侧导航栏 -->
+    <aside class="dashboard-sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-name">家庭私厨 · 管理后台</div>
+      </div>
+      <nav class="sidebar-nav">
+        <a class="sidebar-nav-item active" data-tab="overview" onclick="switchTab('overview')">
+          <span class="nav-icon">📊</span> 数据概览
+        </a>
+        <a class="sidebar-nav-item" data-tab="users" onclick="switchTab('users')">
+          <span class="nav-icon">👥</span> 用户管理
+        </a>
+        <a class="sidebar-nav-item" data-tab="families" onclick="switchTab('families')">
+          <span class="nav-icon">🏠</span> 家庭组管理
+        </a>
+        <a class="sidebar-nav-item" data-tab="orders" onclick="switchTab('orders')">
+          <span class="nav-icon">📋</span> 订单记录
+        </a>
+        <a class="sidebar-nav-item" data-tab="dishes" onclick="switchTab('dishes')">
+          <span class="nav-icon">📝</span> 菜品审核
+        </a>
+        <a class="sidebar-nav-item" data-tab="settings" onclick="switchTab('settings')">
+          <span class="nav-icon">⚙️</span> 系统设置
+        </a>
+      </nav>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="dashboard-main">
+      <!-- 顶部栏 -->
+      <header class="dashboard-topbar">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="topbar-hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="菜单">☰</button>
+          <span class="topbar-greeting">你好，<strong>管理员</strong></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;">
+          <span class="topbar-uptime" id="topbar-uptime">运行中...</span>
+          <span class="topbar-clock" id="topbar-clock">00:00:00</span>
+          <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="切换亮色/深色模式">
+            <span id="theme-icon">☀️</span>
+          </button>
+          <div class="topbar-actions">
+            <a href="/dashboard/logout" class="btn btn-outline btn-sm">退出</a>
+          </div>
+        </div>
+      </header>
+
+      <!-- 面包屑 -->
+      <div class="dashboard-breadcrumb" id="breadcrumb">
+        首页<span class="breadcrumb-sep">›</span><span class="breadcrumb-current" id="breadcrumb-current">数据概览</span>
+      </div>
+
+      <!-- 内容区 -->
+      <div class="dashboard-content">
+
+        <!-- ====== 数据概览 Tab ====== -->
+        <div class="dashboard-tab active" id="tab-overview">
+
+          <!-- 4 张统计卡片 -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-card-label">总用户数</div>
+              <div class="stat-card-value" id="stat-users">-</div>
+              <div class="stat-card-spark" id="spark-users"></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-label">家庭组数</div>
+              <div class="stat-card-value" id="stat-families">-</div>
+              <div class="stat-card-spark" id="spark-families"></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-label">今日订单</div>
+              <div class="stat-card-value" id="stat-orders">-</div>
+              <div class="stat-card-spark" id="spark-orders"></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-label">活跃家庭组</div>
+              <div class="stat-card-value" id="stat-active-families">-</div>
+              <div class="stat-card-sub">本周有订单</div>
+            </div>
+          </div>
+
+          <!-- AI 智能建议 -->
+          <div class="card" style="margin-bottom:16px;">
+            <div class="card-header">💡 智能建议</div>
+            <div class="card-body">
+              <div class="suggestion-list" id="suggestions-list">
+                <div class="loading-text">分析中...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bento Grid：趋势图 + 动态墙 -->
+          <div class="bento-grid">
+            <!-- 左：近7天趋势 + 热门菜品 -->
+            <div class="bento-card bento-full" style="grid-column:1/span 1;">
+              <div class="bento-card-header">📈 近 7 天订单趋势</div>
+              <div class="bento-card-body">
+                <div class="bar-chart-wrap">
+                  <div class="bar-chart" id="trend-chart">
+                    <div class="loading-text">加载中...</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 右：实时动态墙 -->
+            <div class="bento-card">
+              <div class="bento-card-header">
+                <span>🔔 实时动态</span>
+                <div class="toolbar-filter">
+                  <select id="live-feed-filter" onchange="loadLiveFeed()">
+                    <option value="">全部</option>
+                    <option value="点菜">点菜</option>
+                    <option value="烹饪">烹饪</option>
+                    <option value="系统">系统</option>
+                  </select>
+                </div>
+              </div>
+              <div class="bento-card-body" style="padding:10px 20px;">
+                <div class="live-banner" id="live-banner" onclick="loadLiveFeed()">
+                  有新的动态 ↑ 点击查看
+                </div>
+                <div class="timeline" id="live-feed">
+                  <div class="loading-text">加载中...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 热门菜品 Top 5 -->
+            <div class="bento-card">
+              <div class="bento-card-header">🏆 热门菜品 Top 5</div>
+              <div class="bento-card-body">
+                <div class="hbar-list" id="hot-dishes-list">
+                  <div class="loading-text">加载中...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 家庭组活跃排行 -->
+            <div class="bento-card">
+              <div class="bento-card-header">👨‍👩‍👧 家庭组活跃排行</div>
+              <div class="bento-card-body" id="family-ranking">
+                <div class="loading-text">加载中...</div>
+              </div>
+            </div>
+
+            <!-- 用户活跃时段热力图 -->
+            <div class="bento-card bento-full">
+              <div class="bento-card-header">⏰ 用户活跃时段热力图（近7天）</div>
+              <div class="bento-card-body" id="heatmap-container">
+                <div class="loading-text">加载中...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 最新注册用户 -->
+          <div class="card">
+            <div class="card-header">最新注册用户</div>
+            <div class="card-body" style="padding:0;">
+              <div class="data-table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr><th>手机号</th><th>角色</th><th>注册时间</th><th>状态</th></tr>
+                  </thead>
+                  <tbody id="recent-users-tbody">
+                    <tr><td colspan="4" class="loading-text">加载中...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ====== 用户管理 Tab ====== -->
+        <div class="dashboard-tab" id="tab-users">
+          <div class="toolbar">
+            <div class="toolbar-search">
+              <span class="toolbar-search-icon">🔍</span>
+              <input type="text" id="user-search" placeholder="按手机号搜索..." oninput="loadUserPage(1)">
+            </div>
+            <div class="toolbar-filter">
+              <select id="user-role-filter" onchange="loadUserPage(1)">
+                <option value="">全部角色</option>
+                <option value="chef">大厨</option>
+                <option value="member">点菜员</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:0;">
+            <div class="card-body" style="padding:0;">
+              <div class="data-table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>手机号</th>
+                      <th>角色</th>
+                      <th>注册时间</th>
+                      <th>家庭组</th>
+                      <th>状态</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="users-tbody">
+                    <tr><td colspan="7" class="loading-text">加载中...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="pagination" id="users-pagination"></div>
+        </div>
+
+        <!-- ====== 家庭组管理 Tab ====== -->
+        <div class="dashboard-tab" id="tab-families">
+          <div class="toolbar">
+            <div class="toolbar-search">
+              <span class="toolbar-search-icon">🔍</span>
+              <input type="text" id="family-search" placeholder="按组名或邀请码搜索..." oninput="loadFamilyPage(1)">
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:0;">
+            <div class="card-body" style="padding:0;">
+              <div class="data-table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>组名</th>
+                      <th>邀请码</th>
+                      <th>成员数</th>
+                      <th>创建时间</th>
+                      <th>状态</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="families-tbody">
+                    <tr><td colspan="7" class="loading-text">加载中...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="pagination" id="families-pagination"></div>
+        </div>
+
+        <!-- ====== 订单记录 Tab ====== -->
+        <div class="dashboard-tab" id="tab-orders">
+          <div class="toolbar">
+            <div class="toolbar-filter">
+              <select id="order-status-filter" onchange="loadOrderPage(1)">
+                <option value="">全部状态</option>
+                <option value="pending">待接单</option>
+                <option value="accepted">已接单</option>
+                <option value="cooking">烹饪中</option>
+                <option value="completed">已完成</option>
+                <option value="rejected">已拒单</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:0;">
+            <div class="card-body" style="padding:0;">
+              <div class="data-table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>订单ID</th>
+                      <th>用户手机号</th>
+                      <th>菜品</th>
+                      <th>状态</th>
+                      <th>创建时间</th>
+                    </tr>
+                  </thead>
+                  <tbody id="orders-tbody">
+                    <tr><td colspan="5" class="loading-text">加载中...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="pagination" id="orders-pagination"></div>
+        </div>
+
+        <!-- ====== 菜品审核 Tab ====== -->
+        <div class="dashboard-tab" id="tab-dishes">
+          <div class="toolbar">
+            <div class="toolbar-search">
+              <span class="toolbar-search-icon">🔍</span>
+              <input type="text" id="dish-search" placeholder="按菜品名称搜索..." oninput="loadDishPage(1)">
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:0;">
+            <div class="card-body" style="padding:0;">
+              <div class="data-table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>菜品名称</th>
+                      <th>所属家庭组</th>
+                      <th>分类</th>
+                      <th>评分</th>
+                      <th>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dishes-tbody">
+                    <tr><td colspan="6" class="loading-text">加载中...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="pagination" id="dishes-pagination"></div>
+        </div>
+
+        <!-- ====== 系统设置 Tab — Core Console ====== -->
+        <div class="dashboard-tab core-console" id="tab-settings">
+
+          <!-- Bento Grid -->
+          <div class="cc-grid">
+
+            <!-- ====== 主控节点 (2/3) ====== -->
+            <div class="cc-card">
+              <div class="cc-card-header"><span class="cc-dot"></span> PRIMARY NODE — 今日运营概览</div>
+              <div class="cc-primary">
+                <!-- 环形进度器 — 系统运行时长 -->
+                <div class="cc-ring-wrap">
+                  <svg class="cc-ring-svg" viewBox="0 0 170 170">
+                    <circle class="cc-ring-bg" cx="85" cy="85" r="78"/>
+                    <circle class="cc-ring-fg" id="cc-uptime-ring" cx="85" cy="85" r="78"
+                      stroke-dasharray="490" stroke-dashoffset="490"/>
+                  </svg>
+                  <div class="cc-ring-center">
+                    <span class="cc-ring-value" id="cc-uptime-val">--:--:--</span>
+                    <span class="cc-ring-label">UPTIME</span>
+                  </div>
+                </div>
+                <!-- 业务 KPI -->
+                <div class="cc-kpi-grid" id="cc-kpi-grid">
+                  <div class="cc-kpi-item">
+                    <div class="cc-kpi-value" id="cc-kpi-new-users">-</div>
+                    <div class="cc-kpi-label">今日新增用户</div>
+                    <div class="cc-kpi-trend" id="cc-kpi-new-users-trend"></div>
+                  </div>
+                  <div class="cc-kpi-item">
+                    <div class="cc-kpi-value" id="cc-kpi-orders">-</div>
+                    <div class="cc-kpi-label">今日点菜次数</div>
+                    <div class="cc-kpi-trend" id="cc-kpi-orders-trend"></div>
+                  </div>
+                  <div class="cc-kpi-item">
+                    <div class="cc-kpi-value" id="cc-kpi-cooking">-</div>
+                    <div class="cc-kpi-label">正在烹饪中</div>
+                    <div class="cc-kpi-sub">🔥 实时</div>
+                  </div>
+                  <div class="cc-kpi-item">
+                    <div class="cc-kpi-value" id="cc-kpi-completed">-</div>
+                    <div class="cc-kpi-label">今日已完成</div>
+                    <div class="cc-kpi-trend" id="cc-kpi-completed-trend"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ====== 订单完成率 (1/3) ====== -->
+            <div class="cc-card cc-health">
+              <div class="cc-card-header"><span class="cc-dot"></span> ORDER COMPLETION</div>
+              <div class="cc-health-ring">
+                <svg class="cc-health-svg" viewBox="0 0 120 120">
+                  <circle class="cc-health-bg" cx="60" cy="60" r="54"/>
+                  <circle class="cc-health-fg" id="cc-health-ring" cx="60" cy="60" r="54"
+                    stroke-dasharray="339" stroke-dashoffset="339"/>
+                </svg>
+                <div class="cc-health-center">
+                  <span class="cc-health-value" id="cc-health-val">--</span>
+                  <span class="cc-health-label">% 完成率</span>
+                </div>
+              </div>
+              <div style="text-align:center;font-size:11px;color:var(--dbg-text-muted);margin-top:8px;">
+                已完成 <span id="cc-completed-count">0</span> / 共 <span id="cc-total-count">0</span> 单
+              </div>
+            </div>
+
+            <!-- ====== 业务动态 (1/3) ====== -->
+            <div class="cc-card">
+              <div class="cc-card-header"><span class="cc-dot"></span> LIVE ACTIVITY — 业务动态</div>
+              <div class="cc-matrix" style="height:170px;">
+                <div class="cc-matrix-inner" id="cc-matrix-log"></div>
+              </div>
+            </div>
+
+            <!-- ====== 数据中心 (全宽) ====== -->
+            <div class="cc-card cc-full">
+              <div class="cc-card-header"><span class="cc-dot"></span> DATA CENTER — 数据中心</div>
+              <div class="cc-datacenter">
+                <!-- 本周热门菜品 Top 5 -->
+                <div>
+                  <div style="font-size:11px;color:var(--dbg-text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">本周热门菜品 Top 5</div>
+                  <div class="cc-hot-dishes" id="cc-hot-dishes"></div>
+                </div>
+                <!-- 最近7天订单趋势 -->
+                <div>
+                  <div style="font-size:11px;color:var(--dbg-text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">近7天订单趋势</div>
+                  <div class="cc-trend-chart" id="cc-trend-chart">
+                    <div class="loading-text">加载中...</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ====== 密码修改 ====== -->
+          <div class="cc-card cc-settings-form">
+            <div class="cc-card-header"><span class="cc-dot"></span> ACCESS CONTROL</div>
+            <form id="password-form" onsubmit="changePassword(event)" style="max-width:400px;">
+              <div class="form-group">
+                <label class="form-label">旧密码</label>
+                <input type="password" class="form-input" id="old-password" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label">新密码</label>
+                <input type="password" class="form-input" id="new-password" required minlength="6" placeholder="至少6位">
+              </div>
+              <div style="margin-top:16px;">
+                <button type="submit" class="btn btn-primary">保存修改</button>
+              </div>
+              <div id="password-msg" style="margin-top:8px;font-size:13px;"></div>
+            </form>
+          </div>
+
+        </div>
+
+        <!-- ====== 成员列表模态窗口 ====== -->
+        <div class="modal-overlay" id="members-modal" style="display:none;">
+          <div class="modal-box">
+            <div class="modal-header">
+              <span class="modal-title" id="members-modal-title">成员列表</span>
+              <button class="modal-close" onclick="closeMembersModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="members-modal-body">
+              <div class="loading-text">加载中...</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+  // ===== 侧边栏切换 =====
+  function toggleSidebar() {
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebar-overlay');
+    var isOpen = sidebar.classList.contains('open');
+    if (isOpen) {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('show');
+    } else {
+      sidebar.classList.add('open');
+      overlay.classList.add('show');
+    }
+  }
+
+  document.getElementById('sidebar-overlay').addEventListener('click', function() {
+    document.getElementById('sidebar').classList.remove('open');
+    this.classList.remove('show');
+  });
+
+  document.getElementById('members-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeMembersModal();
+  });
+
+  // ===== Tab 切换 =====
+  var TAB_NAMES = {
+    overview: '数据概览', users: '用户管理', families: '家庭组管理',
+    orders: '订单记录', dishes: '菜品审核', settings: '系统设置'
+  };
+  var currentTab = 'overview';
+
+  function switchTab(tab) {
+    currentTab = tab;
+    // 更新侧边栏
+    document.querySelectorAll('.sidebar-nav-item').forEach(function(el) {
+      el.classList.toggle('active', el.dataset.tab === tab);
+    });
+    // 更新内容区
+    document.querySelectorAll('.dashboard-tab').forEach(function(el) {
+      el.classList.toggle('active', el.id === 'tab-' + tab);
+    });
+    // 更新面包屑
+    document.getElementById('breadcrumb-current').textContent = TAB_NAMES[tab] || tab;
+    // 按需首次加载
+    if (tab === 'users' && !window._usersLoaded) { window._usersLoaded = true; loadUserPage(1); }
+    if (tab === 'families' && !window._familiesLoaded) { window._familiesLoaded = true; loadFamilyPage(1); }
+    if (tab === 'orders' && !window._ordersLoaded) { window._ordersLoaded = true; loadOrderPage(1); }
+    if (tab === 'dishes' && !window._dishesLoaded) { window._dishesLoaded = true; loadDishPage(1); }
+    if (tab === 'settings' && !window._settingsLoaded) { window._settingsLoaded = true; loadSettings(); }
+    // 移动端关闭侧边栏
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('show');
+  }
+
+  // ===== 数字动画 =====
+  function animateNumber(el, target) {
+    var start = 0;
+    var duration = 800;  // 800ms ease-out
+    var startTime = null;
+    function step(ts) {
+      if (!startTime) startTime = ts;
+      var progress = Math.min((ts - startTime) / duration, 1);
+      // ease-out: 1 - (1-t)^3
+      var eased = 1 - Math.pow(1 - progress, 3);
+      el.textContent = Math.floor(eased * target);
+      if (progress < 1) requestAnimationFrame(step);
+      else el.textContent = target;
+    }
+    requestAnimationFrame(step);
+  }
+
+  // 迷你趋势条
+  function renderSparkBars(id, count, total) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var bars = '';
+    for (var i = 0; i < 4; i++) {
+      var h = 6 + Math.random() * 18;
+      bars += '<span class="stat-card-spark-bar" style="height:' + h + 'px;"></span>';
+    }
+    el.innerHTML = bars;
+  }
+
+  // ====== 数据概览 ======
+  function loadOverview() {
+    // 统计卡片
+    fetch('/api/dashboard/stats').then(function(r) { return r.json(); }).then(function(d) {
+      animateNumber(document.getElementById('stat-users'), d.userCount);
+      animateNumber(document.getElementById('stat-families'), d.familyCount);
+      animateNumber(document.getElementById('stat-orders'), d.todayOrders);
+      animateNumber(document.getElementById('stat-active-families'), d.activeFamilyGroups || 0);
+      renderSparkBars('spark-users', d.userCount, 50);
+      renderSparkBars('spark-families', d.familyCount, 20);
+      renderSparkBars('spark-orders', d.todayOrders, 30);
+    }).catch(function() {
+      ['stat-users','stat-families','stat-orders','stat-active-families'].forEach(function(id) {
+        document.getElementById(id).textContent = 'ERR';
+      });
+    });
+
+    // 趋势图
+    fetch('/api/dashboard/trend').then(function(r) { return r.json(); }).then(function(d) {
+      var chart = document.getElementById('trend-chart');
+      var items = d.trend || [];
+      var maxCount = 1;
+      items.forEach(function(it) { if (it.count > maxCount) maxCount = it.count; });
+      if (items.length === 0) {
+        chart.innerHTML = '<div class="empty-text">暂无数据</div>';
+        return;
+      }
+      var dayNames = ['周日','周一','周二','周三','周四','周五','周六'];
+      chart.innerHTML = items.map(function(it) {
+        var pct = maxCount > 0 ? Math.round((it.count / maxCount) * 100) : 0;
+        var d = new Date(it.date);
+        return '<div class="bar-col">'
+          + '<div class="bar-value">' + it.count + '</div>'
+          + '<div class="bar" style="height:' + pct + '%" title="' + it.date + ': ' + it.count + '单"></div>'
+          + '<div class="bar-label">' + (d.getMonth()+1) + '/' + d.getDate() + '<br>' + dayNames[d.getDay()] + '</div>'
+          + '</div>';
+      }).join('');
+    }).catch(function() {
+      document.getElementById('trend-chart').innerHTML = '<div class="empty-text">加载失败</div>';
+    });
+
+    // 最新用户
+    fetch('/api/dashboard/users?limit=10&page=1').then(function(r) { return r.json(); }).then(function(d) {
+      var tbody = document.getElementById('recent-users-tbody');
+      var users = d.users || [];
+      if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-text">暂无数据</td></tr>';
+        return;
+      }
+      tbody.innerHTML = users.map(function(u) {
+        var roleClass = u.role === 'chef' ? 'role-chef' : 'role-member';
+        var roleText = u.role === 'chef' ? '大厨' : '点菜员';
+        var statusDot = 'normal';
+        var statusText = '正常';
+        return '<tr>'
+          + '<td>' + escapeHtml(u.phone) + '</td>'
+          + '<td><span class="role-tag ' + roleClass + '">' + roleText + '</span></td>'
+          + '<td>' + escapeHtml(formatTime(u.createdAt)) + '</td>'
+          + '<td><span class="status-dot ' + statusDot + '">' + statusText + '</span></td>'
+          + '</tr>';
+      }).join('');
+    }).catch(function() {
+      document.getElementById('recent-users-tbody').innerHTML = '<tr><td colspan="4" class="empty-text">加载失败</td></tr>';
+    });
+
+    // 实时动态墙 + 洞察数据 + 建议
+    loadLiveFeed();
+    loadInsights();
+    loadSuggestions();
+  }
+
+  // ====== 用户管理 ======
+  function loadUserPage(page) {
+    window._currentUserPage = page;
+    var tbody = document.getElementById('users-tbody');
+    tbody.innerHTML = '<tr><td colspan="7" class="loading-text">加载中...</td></tr>';
+    var search = encodeURIComponent(document.getElementById('user-search').value.trim());
+    var role = encodeURIComponent(document.getElementById('user-role-filter').value);
+    var qs = '?page=' + page + '&limit=20';
+    if (search) qs += '&search=' + search;
+    if (role) qs += '&role=' + role;
+
+    fetch('/api/dashboard/users' + qs).then(function(r) { return r.json(); }).then(function(d) {
+      var users = d.users || [];
+      if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-text">暂无数据</td></tr>';
+      } else {
+        tbody.innerHTML = users.map(function(u) {
+          var roleClass = u.role === 'chef' ? 'role-chef' : 'role-member';
+          var roleText = u.role === 'chef' ? '大厨' : '点菜员';
+          var isDisabled = u.status === 'disabled';
+          var statusDot = isDisabled ? 'disabled' : 'normal';
+          var statusText = isDisabled ? '禁用' : '正常';
+          var toggleBtn = isDisabled
+            ? '<button class="btn btn-outline btn-xs" onclick="toggleUserStatus(' + u.id + ',\'enable\')">启用</button>'
+            : '<button class="btn btn-outline btn-xs" onclick="toggleUserStatus(' + u.id + ',\'disable\')">禁用</button>';
+          return '<tr>'
+            + '<td>' + u.id + '</td>'
+            + '<td>' + escapeHtml(u.phone) + '</td>'
+            + '<td><span class="role-tag ' + roleClass + '">' + roleText + '</span></td>'
+            + '<td>' + escapeHtml(formatTime(u.createdAt)) + '</td>'
+            + '<td>' + escapeHtml(u.familyName || '未加入') + '</td>'
+            + '<td><span class="status-dot ' + statusDot + '">' + statusText + '</span></td>'
+            + '<td><div class="td-actions">'
+              + '<button class="btn btn-outline btn-xs" onclick="alert(\'用户ID: ' + u.id + '\\n手机号: ' + u.phone + '\\n角色: ' + roleText + '\\n注册时间: ' + u.createdAt + '\')">查看</button>'
+              + toggleBtn
+              + '<button class="btn btn-danger btn-xs" onclick="deleteUser(' + u.id + ',\'' + escapeJs(u.phone) + '\')">删除</button>'
+            + '</div></td>'
+            + '</tr>';
+        }).join('');
+      }
+      renderPagination('users-pagination', d.page, d.totalPages, d.total, loadUserPage, 'loadUserPage');
+    }).catch(function() {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-text">加载失败</td></tr>';
+      document.getElementById('users-pagination').innerHTML = '';
+    });
+  }
+
+  // ====== 家庭组管理 ======
+  function loadFamilyPage(page) {
+    window._currentFamilyPage = page;
+    var tbody = document.getElementById('families-tbody');
+    tbody.innerHTML = '<tr><td colspan="7" class="loading-text">加载中...</td></tr>';
+    var search = encodeURIComponent(document.getElementById('family-search').value.trim());
+    var qs = '?page=' + page + '&limit=20';
+    if (search) qs += '&search=' + search;
+
+    fetch('/api/dashboard/families' + qs).then(function(r) { return r.json(); }).then(function(d) {
+      var families = d.families || [];
+      if (families.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-text">暂无数据</td></tr>';
+      } else {
+        tbody.innerHTML = families.map(function(f) {
+          return '<tr>'
+            + '<td>' + f.id + '</td>'
+            + '<td>' + escapeHtml(f.name) + '</td>'
+            + '<td>' + escapeHtml(f.inviteCode) + '</td>'
+            + '<td>' + f.memberCount + '</td>'
+            + '<td>' + escapeHtml(formatTime(f.createdAt)) + '</td>'
+            + '<td><span class="status-dot normal">活跃</span></td>'
+            + '<td><div class="td-actions">'
+              + '<button class="btn btn-outline btn-xs" onclick="viewFamilyDetail(' + f.id + ')">查看详情</button>'
+              + '<button class="btn btn-outline btn-xs" onclick="viewFamilyMembers(' + f.id + ',\'' + escapeJs(f.name) + '\')">成员列表</button>'
+              + '<button class="btn btn-danger btn-xs" onclick="deleteFamily(' + f.id + ',\'' + escapeJs(f.name) + '\')">删除</button>'
+            + '</div></td>'
+            + '</tr>';
+        }).join('');
+      }
+      renderPagination('families-pagination', d.page, d.totalPages, d.total, loadFamilyPage, 'loadFamilyPage');
+    }).catch(function() {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-text">加载失败</td></tr>';
+      document.getElementById('families-pagination').innerHTML = '';
+    });
+  }
+
+  function viewFamilyDetail(fid) {
+    fetch('/api/dashboard/families/' + fid).then(function(r) { return r.json(); }).then(function(f) {
+      var members = (f.members || []).map(function(m) {
+        return m.phone + ' (' + (m.role === 'chef' ? '大厨' : '点菜员') + ')';
+      }).join('\n');
+      alert('家庭组: ' + f.name
+        + '\n邀请码: ' + f.inviteCode
+        + '\n成员数: ' + f.memberCount
+        + '\n创建时间: ' + formatTime(f.createdAt)
+        + '\n\n成员列表:\n' + (members || '无'));
+    }).catch(function() {
+      alert('加载失败');
+    });
+  }
+
+  // ====== 分页渲染 ======
+  function renderPagination(containerId, currentPage, totalPages, total, loadFn, fnName) {
+    var container = document.getElementById(containerId);
+    if (!total || total === 0) { container.innerHTML = ''; return; }
+    if (!fnName) fnName = loadFn.name || '';
+    var html = '<div class="pagination-bar">';
+    // 左上：共 XX 条
+    html += '<span class="pagination-count">共 ' + total + ' 条记录</span>';
+    // 中间：分页按钮
+    html += '<div class="pagination-btns">';
+    html += '<button class="pagination-btn" onclick="' + fnName + '(' + (currentPage - 1) + ')"' + (currentPage <= 1 ? ' disabled' : '') + '>‹ 上一页</button>';
+    if (totalPages <= 1) {
+      html += '<button class="pagination-btn active">1</button>';
+    } else {
+      for (var p = 1; p <= totalPages; p++) {
+        if (p === currentPage) {
+          html += '<button class="pagination-btn active">' + p + '</button>';
+        } else if (Math.abs(p - currentPage) <= 2 || p === 1 || p === totalPages) {
+          html += '<button class="pagination-btn" onclick="' + fnName + '(' + p + ')">' + p + '</button>';
+        } else if (p === 2 || p === totalPages - 1) {
+          html += '<span class="pagination-ellipsis">...</span>';
+        }
+      }
+    }
+    html += '<button class="pagination-btn" onclick="' + fnName + '(' + (currentPage + 1) + ')"' + (currentPage >= totalPages ? ' disabled' : '') + '>下一页 ›</button>';
+    html += '</div>';
+    // 右侧：跳转
+    html += '<span class="pagination-jump">跳至 <input type="number" class="pagination-jump-input" id="' + containerId + '-jump" min="1" max="' + totalPages + '" value="' + currentPage + '" onkeydown="if(event.key===\'Enter\')' + fnName + '(parseInt(this.value)||1)"> 页 <button class="pagination-btn" onclick="var v=parseInt(document.getElementById(\'' + containerId + '-jump\').value)||1;' + fnName + '(v)">GO</button></span>';
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  // ====== 工具函数 ======
+  function formatTime(ts) {
+    if (!ts) return '-';
+    var d = new Date(ts);
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function escapeJs(str) {
+    if (!str) return '';
+    return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  }
+
+  // ====== 实时时钟 + 运行时长 ======
+  // 优先从 sessionStorage 读取缓存的服务器启动时间，避免页面刷新后重置
+  var _serverStartTime = null;
+  try {
+    var cached = sessionStorage.getItem('_svrStart');
+    if (cached) _serverStartTime = parseInt(cached, 10);
+  } catch(_) {}
+
+  // 如果没有缓存，从服务端获取（仅首次打开时请求一次）
+  if (!_serverStartTime) {
+    fetch('/api/dashboard/settings')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.startTime) {
+          _serverStartTime = new Date(d.startTime).getTime();
+          try { sessionStorage.setItem('_svrStart', String(_serverStartTime)); } catch(_) {}
+        }
+      });
+  }
+
+  function updateClock() {
+    var now = new Date();
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    var dateStr = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate())
+      + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+    var el = document.getElementById('topbar-clock');
+    if (el) el.textContent = dateStr;
+
+    // 运行时长（基于服务端启动时间，非页面打开时间）
+    var uptimeEl = document.getElementById('topbar-uptime');
+    if (uptimeEl && _serverStartTime) {
+      var secs = Math.floor((now.getTime() - _serverStartTime) / 1000);
+      var days = Math.floor(secs / 86400);
+      var hrs = Math.floor((secs % 86400) / 3600);
+      var mins = Math.floor((secs % 3600) / 60);
+      var s = secs % 60;
+      var dayStr = days > 0 ? days + '天 ' : '';
+      uptimeEl.textContent = '运行 ' + dayStr + hrs + 'h ' + mins + 'm ' + s + 's';
+    }
+  }
+  updateClock();
+  var _timers = [setInterval(updateClock, 1000)];
+
+  // ====== 主题切换 ======
+  function toggleTheme() {
+    var body = document.body;
+    var icon = document.getElementById('theme-icon');
+    body.classList.toggle('light-mode');
+    var isLight = body.classList.contains('light-mode');
+    icon.textContent = isLight ? '🌙' : '☀️';
+    try { localStorage.setItem('dashboard-theme', isLight ? 'light' : 'dark'); } catch(_) {}
+  }
+  // 记住主题偏好
+  (function() {
+    try {
+      var saved = localStorage.getItem('dashboard-theme');
+      if (saved === 'light') {
+        document.body.classList.add('light-mode');
+        var icon = document.getElementById('theme-icon');
+        if (icon) icon.textContent = '🌙';
+      }
+    } catch(_) {}
+  })();
+
+  // ====== 实时动态墙 ======
+  var _liveFeedSeq = 0;
+  function loadLiveFeed() {
+    var filter = document.getElementById('live-feed-filter').value;
+    var qs = filter ? '?filter=' + encodeURIComponent(filter) : '';
+    fetch('/api/dashboard/live-feed' + qs).then(function(r) { return r.json(); }).then(function(d) {
+      var feed = document.getElementById('live-feed');
+      var items = d.liveFeed || [];
+      if (items.length === 0) {
+        feed.innerHTML = '<div class="empty-text">暂无动态</div>';
+        return;
+      }
+      var newSeq = items.length;
+      if (_liveFeedSeq > 0 && newSeq > _liveFeedSeq) {
+        var banner = document.getElementById('live-banner');
+        if (banner) banner.style.display = 'block';
+      }
+      _liveFeedSeq = newSeq;
+      feed.innerHTML = items.map(function(item) {
+        var typeClass = item.type === '点菜' ? '点菜' : item.type;
+        return '<div class="timeline-item">'
+          + '<div class="timeline-dot" style="border-color:var(--dbg-accent);"></div>'
+          + '<div class="timeline-content">'
+            + '<div class="timeline-text">' + escapeHtml(item.desc) + '<span class="timeline-type">' + escapeHtml(typeClass) + '</span></div>'
+            + '<div class="timeline-time">' + escapeHtml(timeAgo(item.time)) + '</div>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+      document.getElementById('live-banner').style.display = 'none';
+    }).catch(function() {
+      document.getElementById('live-feed').innerHTML = '<div class="empty-text">加载失败</div>';
+    });
+  }
+  // 每15秒自动刷新
+  _timers.push(setInterval(function() {
+    if (currentTab === 'overview') loadLiveFeed();
+  }, 15000));
+
+  function timeAgo(ts) {
+    if (!ts) return '-';
+    var diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    if (diff < 60) return '刚刚';
+    if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前';
+    if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前';
+    return formatTime(ts);
+  }
+
+  // ====== 数据洞察 ======
+  function loadInsights() {
+    fetch('/api/dashboard/insights').then(function(r) { return r.json(); }).then(function(d) {
+      // 热门菜品 Top 5
+      var hotList = document.getElementById('hot-dishes-list');
+      var dishes = d.hotDishes || [];
+      if (dishes.length === 0) {
+        hotList.innerHTML = '<div class="empty-text">暂无数据</div>';
+      } else {
+        var total = dishes.reduce(function(s, x) { return s + x.cnt; }, 0);
+        var maxCnt = dishes[0] ? dishes[0].cnt : 1;
+        var medals = ['gold', 'silver', 'bronze'];
+        hotList.innerHTML = dishes.map(function(dish, i) {
+          var pct = total > 0 ? Math.round((dish.cnt / maxCnt) * 100) : 0;
+          var medalClass = medals[i] || '';
+          return '<div class="hbar-row">'
+            + '<span class="hbar-rank ' + medalClass + '">' + (i + 1) + '</span>'
+            + '<span class="hbar-name">' + escapeHtml(dish.name) + '</span>'
+            + '<span class="hbar-track"><span class="hbar-fill" style="width:' + pct + '%"></span></span>'
+            + '<span class="hbar-count">' + dish.cnt + ' 单 (' + (total > 0 ? Math.round(dish.cnt / total * 100) : 0) + '%)</span>'
+            + '</div>';
+        }).join('');
+      }
+
+      // 家庭组排行
+      var rankList = document.getElementById('family-ranking');
+      var rankings = d.fgRankings || [];
+      if (rankings.length === 0) {
+        rankList.innerHTML = '<div class="empty-text">暂无数据</div>';
+      } else {
+        var medals2 = ['🥇', '🥈', '🥉'];
+        rankList.innerHTML = rankings.map(function(f, i) {
+          var medal = medals2[i] || '';
+          return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">'
+            + '<span class="rank-medal">' + medal + '</span>'
+            + '<span class="rank-name">' + escapeHtml(f.name) + '</span>'
+            + '<span class="rank-count">' + f.cnt + ' 单</span>'
+            + '</div>';
+        }).join('');
+      }
+
+      // 热力图
+      renderHeatmap(d.heatmap || []);
+    }).catch(function() {
+      document.getElementById('hot-dishes-list').innerHTML = '<div class="empty-text">加载失败</div>';
+      document.getElementById('family-ranking').innerHTML = '<div class="empty-text">加载失败</div>';
+      document.getElementById('heatmap-container').innerHTML = '<div class="empty-text">加载失败</div>';
+    });
+  }
+
+  function renderHeatmap(data) {
+    var container = document.getElementById('heatmap-container');
+    // data: 7 rows (Sun-Sat), each with 24 hour counts
+    var dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+    var hourNames = ['0', '2', '4', '6', '8', '10', '12', '14', '16', '18', '20', '22'];
+    var maxVal = 1;
+    data.forEach(function(row) { row.forEach(function(v) { if (v > maxVal) maxVal = v; }); });
+
+    var html = '<div class="heatmap">';
+    html += '<div class="heatmap-labels" style="padding-top:14px;">' + dayNames.map(function(d) {
+      return '<span class="heatmap-label" style="height:16px;line-height:16px;">周' + d + '</span>';
+    }).join('') + '</div>';
+    // 显示偶数小时列标签
+    html += '<div style="display:flex;flex-direction:column;flex:1;">';
+    html += '<div style="display:flex;gap:2px;margin-bottom:2px;">' + hourNames.map(function() {
+      return '<span class="heatmap-col-header" style="flex:1;">&nbsp;</span>';
+    }).join('') + '</div>';
+    html += '<div style="display:flex;gap:2px;">';
+    for (var h = 0; h < 24; h++) {
+      html += '<div class="heatmap-col">';
+      for (var d = 0; d < 7; d++) {
+        var val = (data[d] && data[d][h]) || 0;
+        var level = 0;
+        if (val > 0 && maxVal > 0) {
+          level = Math.ceil((val / maxVal) * 4);
+        }
+        html += '<div class="heatmap-cell" data-level="' + level + '" title="周' + dayNames[d] + ' ' + h + ':00 - ' + val + '单"></div>';
+      }
+      html += '</div>';
+    }
+    html += '</div></div></div>';
+
+    // 图例
+    html += '<div class="heatmap-legend">';
+    html += '<span class="heatmap-legend-label">少</span>';
+    for (var l = 0; l <= 4; l++) {
+      html += '<span class="heatmap-legend-cell" style="background:rgba(255,122,89,' + (0.05 + l * 0.18) + ');"></span>';
+    }
+    html += '<span class="heatmap-legend-label">多</span>';
+    html += '</div>';
+
+    container.innerHTML = html;
+  }
+
+  // ====== 智能建议 ======
+  function loadSuggestions() {
+    fetch('/api/dashboard/suggestions').then(function(r) { return r.json(); }).then(function(d) {
+      var list = document.getElementById('suggestions-list');
+      var items = d.suggestions || [];
+      list.innerHTML = items.map(function(s) {
+        return '<div class="suggestion-item">'
+          + '<span class="suggestion-icon">💡</span>'
+          + '<span class="suggestion-text">' + escapeHtml(s) + '</span>'
+          + '</div>';
+      }).join('');
+    }).catch(function() {
+      document.getElementById('suggestions-list').innerHTML = '<div class="empty-text">暂无建议</div>';
+    });
+  }
+
+  // ====== 启用/禁用用户 ======
+  function toggleUserStatus(userId, action) {
+    var msg = action === 'disable' ? '确定要禁用该用户吗？禁用后该用户将无法登录。' : '确定要启用该用户吗？';
+    if (!confirm(msg)) return;
+    fetch('/api/dashboard/users/' + userId + '/' + action, { method: 'PUT' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.error) { alert(d.error); return; }
+        loadUserPage(window._currentUserPage || 1);
+      })
+      .catch(function() { alert('操作失败'); });
+  }
+
+  // ====== 删除用户 ======
+  function deleteUser(userId, phone) {
+    if (!confirm('确定要删除用户 ' + phone + ' 吗？\n\n此操作不可撤销，将物理删除该用户及其关联数据。')) return;
+    fetch('/api/dashboard/users/' + userId, { method: 'DELETE' }).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.error) { alert(d.error); return; }
+      alert('已删除');
+      loadUserPage(window._currentUserPage || 1);
+    }).catch(function() { alert('删除失败'); });
+  }
+
+  // ====== 删除家庭组 ======
+  function deleteFamily(fid, name) {
+    if (!confirm('确定要删除家庭组「' + name + '」吗？\n\n此操作将解散该家庭组，所有成员的归属关系将被清除。')) return;
+    fetch('/api/dashboard/families/' + fid, { method: 'DELETE' }).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.error) { alert(d.error); return; }
+      alert('已删除');
+      loadFamilyPage(window._currentFamilyPage || 1);
+    }).catch(function() { alert('删除失败'); });
+  }
+
+  // ====== 查看家庭组成员 ======
+  function viewFamilyMembers(fid, name) {
+    var modal = document.getElementById('members-modal');
+    var body = document.getElementById('members-modal-body');
+    document.getElementById('members-modal-title').textContent = '「' + name + '」成员列表';
+    body.innerHTML = '<div class="loading-text">加载中...</div>';
+    modal.style.display = 'flex';
+    fetch('/api/dashboard/family/' + fid + '/members').then(function(r) { return r.json(); }).then(function(d) {
+      var members = d.members || [];
+      if (members.length === 0) {
+        body.innerHTML = '<div class="empty-text">暂未加入成员</div>';
+        return;
+      }
+      body.innerHTML = '<table class="data-table"><thead><tr><th>手机号</th><th>角色</th><th>加入时间</th></tr></thead><tbody>'
+        + members.map(function(m) {
+          var roleText = m.role === 'chef' ? '大厨' : '点菜员';
+          return '<tr><td>' + escapeHtml(m.phone) + '</td><td>' + roleText + '</td><td>' + escapeHtml(formatTime(m.createdAt)) + '</td></tr>';
+        }).join('')
+        + '</tbody></table>';
+    }).catch(function() {
+      body.innerHTML = '<div class="empty-text">加载失败</div>';
+    });
+  }
+
+  function closeMembersModal() {
+    document.getElementById('members-modal').style.display = 'none';
+  }
+
+  // ====== 订单记录 ======
+  function loadOrderPage(page) {
+    window._currentOrderPage = page;
+    var tbody = document.getElementById('orders-tbody');
+    tbody.innerHTML = '<tr><td colspan="5" class="loading-text">加载中...</td></tr>';
+    var status = encodeURIComponent(document.getElementById('order-status-filter').value);
+    var qs = '?page=' + page + '&limit=20';
+    if (status) qs += '&status=' + status;
+
+    fetch('/api/dashboard/orders' + qs).then(function(r) { return r.json(); }).then(function(d) {
+      var orders = d.orders || [];
+      if (orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-text">暂无数据</td></tr>';
+      } else {
+        tbody.innerHTML = orders.map(function(o) {
+          return '<tr>'
+            + '<td>#' + o.id + '</td>'
+            + '<td>' + escapeHtml(o.phone) + '</td>'
+            + '<td>' + escapeHtml(o.dishNames.join('、') || '无') + '</td>'
+            + '<td><span class="status-dot ' + orderStatusClass(o.status) + '">' + orderStatusName(o.status) + '</span></td>'
+            + '<td>' + escapeHtml(formatTime(o.createdAt)) + '</td>'
+            + '</tr>';
+        }).join('');
+      }
+      renderPagination('orders-pagination', d.page, d.totalPages, d.total, loadOrderPage, 'loadOrderPage');
+    }).catch(function() {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty-text">加载失败</td></tr>';
+      document.getElementById('orders-pagination').innerHTML = '';
+    });
+  }
+
+  function orderStatusName(s) {
+    var map = { pending: '待接单', accepted: '已接单', cooking: '烹饪中', completed: '已完成', rejected: '已拒单' };
+    return map[s] || s;
+  }
+
+  function orderStatusClass(s) {
+    var map = { pending: 'status-pending', accepted: 'status-accepted', cooking: 'status-cooking', completed: 'status-completed', rejected: 'status-rejected' };
+    return map[s] || '';
+  }
+
+  // ====== 菜品列表 ======
+  function loadDishPage(page) {
+    window._currentDishPage = page;
+    var tbody = document.getElementById('dishes-tbody');
+    tbody.innerHTML = '<tr><td colspan="6" class="loading-text">加载中...</td></tr>';
+    var search = encodeURIComponent(document.getElementById('dish-search').value.trim());
+    var qs = '?page=' + page + '&limit=20';
+    if (search) qs += '&search=' + search;
+
+    fetch('/api/dashboard/dishes' + qs).then(function(r) { return r.json(); }).then(function(d) {
+      var dishes = d.dishes || [];
+      if (dishes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-text">暂无数据</td></tr>';
+      } else {
+        tbody.innerHTML = dishes.map(function(d) {
+          var availDot = d.isAvailable ? 'normal' : 'disabled';
+          var availText = d.isAvailable ? '上架' : '下架';
+          var stars = d.avgRating > 0 ? ' ⭐' + d.avgRating.toFixed(1) : ' 暂无';
+          return '<tr>'
+            + '<td>' + d.id + '</td>'
+            + '<td>' + escapeHtml(d.name) + '</td>'
+            + '<td>' + escapeHtml(d.familyName) + '</td>'
+            + '<td>' + escapeHtml(d.category) + '</td>'
+            + '<td>' + stars + '</td>'
+            + '<td><span class="status-dot ' + availDot + '">' + availText + '</span></td>'
+            + '</tr>';
+        }).join('');
+      }
+      renderPagination('dishes-pagination', d.page, d.totalPages, d.total, loadDishPage, 'loadDishPage');
+    }).catch(function() {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-text">加载失败</td></tr>';
+      document.getElementById('dishes-pagination').innerHTML = '';
+    });
+  }
+
+  // ====== 系统设置 — Core Console ======
+  var _ccUptimeInterval = null;
+  var _ccStarted = false;
+
+  function initCoreConsole() {
+    if (_ccStarted) return;
+    _ccStarted = true;
+
+    // 获取上线日期 + 运营数据
+    Promise.all([
+      fetch('/api/dashboard/uptime').then(function(r) { return r.json(); }),
+      fetch('/api/dashboard/stats').then(function(r) { return r.json(); }),
+      fetch('/api/dashboard/insights').then(function(r) { return r.json(); }),
+      fetch('/api/dashboard/trend').then(function(r) { return r.json(); }),
+      fetch('/api/dashboard/live-feed').then(function(r) { return r.json(); }),
+    ]).then(function(results) {
+      var uptime = results[0];
+      var stats = results[1];
+      var insights = results[2];
+      var trend = results[3];
+      var liveFeed = results[4];
+
+      var startTs = uptime.launchDate ? new Date(uptime.launchDate).getTime() : Date.now();
+      startUptimeRing(startTs);
+      renderBusinessKPIs(stats);
+      animateCompletionRate(stats.completionRate || 0, stats.completedOrdersToday || 0, stats.todayOrders || 0);
+      renderHotDishes(insights.hotDishes || []);
+      renderTrendChart(trend.trend || []);
+      renderLiveActivity(liveFeed.liveFeed || []);
+    });
+  }
+
+  function startUptimeRing(launchTs) {
+    var ring = document.getElementById('cc-uptime-ring');
+    var valEl = document.getElementById('cc-uptime-val');
+    var labelEl = document.querySelector('.cc-ring-label');
+    var CIRC = 490;
+
+    function tick() {
+      var secs = Math.floor((Date.now() - launchTs) / 1000);
+      var days = Math.floor(secs / 86400);
+      var h = Math.floor((secs % 86400) / 3600);
+      var m = Math.floor((secs % 3600) / 60);
+      var s = secs % 60;
+      var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+      if (valEl) valEl.textContent = days + 'd ' + pad(h) + 'h ' + pad(m) + 'm';
+      if (labelEl) labelEl.textContent = 'SINCE LAUNCH';
+
+      // 环形进度：每小时一圈 (24小时 = 一天)
+      var hourFrac = (h * 3600 + m * 60 + s) / 86400;
+      if (ring) ring.setAttribute('stroke-dashoffset', CIRC * (1 - hourFrac));
+    }
+    tick();
+    _ccUptimeInterval = setInterval(tick, 1000);
+    _timers.push(_ccUptimeInterval);
+  }
+
+  function renderBusinessKPIs(stats) {
+    animateKpiValue('cc-kpi-new-users', stats.newUsersToday || 0);
+    animateKpiValue('cc-kpi-orders', stats.todayOrders || 0);
+    animateKpiValue('cc-kpi-cooking', stats.cookingOrders || 0);
+    animateKpiValue('cc-kpi-completed', stats.completedOrdersToday || 0);
+  }
+
+  function animateKpiValue(elId, target) {
+    var el = document.getElementById(elId);
+    if (!el) return;
+    var start = 0, startTime = null, duration = 800;
+    function step(ts) {
+      if (!startTime) startTime = ts;
+      var p = Math.min((ts - startTime) / duration, 1);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.floor(eased * target);
+      if (p < 1) requestAnimationFrame(step);
+      else el.textContent = target;
+    }
+    requestAnimationFrame(step);
+  }
+
+  function animateCompletionRate(rate, completed, total) {
+    var ring = document.getElementById('cc-health-ring');
+    var valEl = document.getElementById('cc-health-val');
+    var CIRC = 339;
+    var startTime = null;
+    function step(ts) {
+      if (!startTime) startTime = ts;
+      var p = Math.min((ts - startTime) / 1200, 1);
+      var v = (rate * (1 - Math.pow(1 - p, 3))).toFixed(1);
+      if (valEl) valEl.textContent = v;
+      if (ring) ring.setAttribute('stroke-dashoffset', CIRC * (1 - parseFloat(v) / 100));
+      if (p < 1) requestAnimationFrame(step);
+      else { if (valEl) valEl.textContent = rate; }
+    }
+    requestAnimationFrame(step);
+    var compEl = document.getElementById('cc-completed-count');
+    var totalEl = document.getElementById('cc-total-count');
+    if (compEl) compEl.textContent = completed;
+    if (totalEl) totalEl.textContent = total;
+  }
+
+  function renderHotDishes(dishes) {
+    var container = document.getElementById('cc-hot-dishes');
+    if (!container) return;
+    if (!dishes || dishes.length === 0) {
+      container.innerHTML = '<div class="empty-text" style="padding:20px;">暂无数据</div>';
+      return;
+    }
+    var total = dishes.reduce(function(s, d) { return s + d.cnt; }, 0);
+    var maxCnt = dishes[0] ? dishes[0].cnt : 1;
+    var medals = ['🥇', '🥈', '🥉', '4', '5'];
+    container.innerHTML = dishes.map(function(d, i) {
+      var pct = Math.round((d.cnt / maxCnt) * 100);
+      return '<div class="cc-hot-row">'
+        + '<span class="cc-hot-rank">' + (medals[i] || (i + 1)) + '</span>'
+        + '<span class="cc-hot-name">' + escapeHtml(d.name) + '</span>'
+        + '<span class="cc-hot-track"><span class="cc-hot-fill" style="width:' + pct + '%"></span></span>'
+        + '<span class="cc-hot-count">' + d.cnt + '单 ' + (total > 0 ? Math.round(d.cnt / total * 100) : 0) + '%</span>'
+        + '</div>';
+    }).join('');
+  }
+
+  function renderTrendChart(trendData) {
+    var container = document.getElementById('cc-trend-chart');
+    if (!container) return;
+    if (!trendData || trendData.length === 0) {
+      container.innerHTML = '<div class="empty-text" style="padding:20px;">暂无数据</div>';
+      return;
+    }
+    var maxCount = 1;
+    trendData.forEach(function(it) { if (it.count > maxCount) maxCount = it.count; });
+    var dayNames = ['日','一','二','三','四','五','六'];
+    container.innerHTML = '<div class="cc-bar-chart">'
+      + trendData.map(function(it) {
+          var pct = maxCount > 0 ? Math.round((it.count / maxCount) * 100) : 0;
+          var d = new Date(it.date);
+          return '<div class="cc-bar-col">'
+            + '<span class="cc-bar-val">' + it.count + '</span>'
+            + '<span class="cc-bar-bar" style="height:' + pct + '%"></span>'
+            + '<span class="cc-bar-day">' + (d.getMonth()+1) + '/' + d.getDate() + '</span>'
+            + '</div>';
+        }).join('')
+      + '</div>';
+  }
+
+  function renderLiveActivity(feed) {
+    var el = document.getElementById('cc-matrix-log');
+    if (!el) return;
+    if (!feed || feed.length === 0) {
+      el.innerHTML = '<div>暂无业务动态</div>';
+      return;
+    }
+    // 取最新 10 条，复制一份用于无缝滚动
+    var items = feed.slice(0, 10);
+    var lines = items.map(function(it) {
+      var typeTag = it.type === '点菜' ? '[点菜]' : (it.type === '评分' ? '[评分]' : (it.type === '注册' ? '[注册]' : '[' + it.type + ']'));
+      var time = it.time ? it.time.substring(11, 16) : '';
+      return '<div>' + time + ' ' + typeTag + ' ' + escapeHtml(it.desc) + '</div>';
+    });
+    el.innerHTML = lines.concat(lines).concat(lines).join('');
+  }
+
+  function loadSettings() {
+    initCoreConsole();
+  }
+
+
+  function changePassword(e) {
+    e.preventDefault();
+    var msg = document.getElementById('password-msg');
+    var oldPw = document.getElementById('old-password').value.trim();
+    var newPw = document.getElementById('new-password').value.trim();
+
+    if (newPw.length < 6) { msg.innerHTML = '<span style="color:#E57373;">新密码至少6位</span>'; return; }
+
+    fetch('/api/dashboard/settings/password', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldPassword: oldPw, newPassword: newPw }),
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.success) {
+        msg.innerHTML = '<span style="color:#8BAA7B;">密码修改成功</span>';
+        document.getElementById('old-password').value = '';
+        document.getElementById('new-password').value = '';
+      } else {
+        msg.innerHTML = '<span style="color:#E57373;">' + escapeHtml(d.message) + '</span>';
+      }
+    }).catch(function() {
+      msg.innerHTML = '<span style="color:#E57373;">请求失败</span>';
+    });
+  }
+
+  // ====== 定时器清理 ======
+  window.addEventListener('beforeunload', function() {
+    _timers.forEach(function(t) { clearInterval(t); });
+  });
+
+  // ====== 初始加载 ======
+  loadOverview();
+  </script>
+<% } %>
+
+</body>
+</html>

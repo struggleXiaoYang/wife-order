@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>注册 - 家庭私厨</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="auth-body">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <h1 class="auth-title">创建账号</h1>
+      <p class="auth-subtitle">加入家庭私厨，开启美味之旅</p>
+
+      <form class="auth-form" id="register-form">
+        <!-- 手机号 + 验证码 同行 -->
+        <div class="auth-field">
+          <label class="auth-label" for="phone">手机号</label>
+          <div class="auth-row">
+            <input
+              class="auth-input auth-input-flex"
+              type="tel"
+              id="phone"
+              name="phone"
+              placeholder="请输入手机号"
+              maxlength="11"
+              autocomplete="tel"
+              required
+              autofocus
+            >
+            <button
+              class="auth-code-btn"
+              type="button"
+              id="code-btn"
+            >获取验证码</button>
+          </div>
+          <span class="auth-error" id="phone-error"></span>
+        </div>
+
+        <!-- 身份选择 -->
+        <div class="auth-field">
+          <label class="auth-label">我的身份</label>
+          <div class="role-row">
+            <button type="button" class="role-btn role-chef" data-role="chef" id="role-chef">
+              <span class="role-icon">🧑‍🍳</span>
+              <span class="role-text">我是大厨<span class="role-sub">管理菜品</span></span>
+            </button>
+            <button type="button" class="role-btn role-member active" data-role="member" id="role-member">
+              <span class="role-icon">👩</span>
+              <span class="role-text">我是点菜员<span class="role-sub">点菜吃饭</span></span>
+            </button>
+          </div>
+          <input type="hidden" name="role" id="role-input" value="member">
+        </div>
+
+        <!-- 验证码 -->
+        <div class="auth-field">
+          <label class="auth-label" for="code">验证码</label>
+          <input
+            class="auth-input"
+            type="text"
+            id="code"
+            name="code"
+            placeholder="请输入验证码"
+            maxlength="6"
+            autocomplete="one-time-code"
+            required
+          >
+          <span class="auth-error" id="code-error"></span>
+        </div>
+
+        <!-- 家庭邀请码（可选） -->
+        <div class="auth-field">
+          <label class="auth-label" for="invite-code">家庭邀请码</label>
+          <input
+            class="auth-input"
+            type="text"
+            id="invite-code"
+            name="invite-code"
+            placeholder="填写老公手机号加入家庭（可选）"
+            maxlength="11"
+            autocomplete="off"
+          >
+          <span class="auth-error" id="invite-error"></span>
+        </div>
+
+        <!-- 密码 -->
+        <div class="auth-field">
+          <label class="auth-label" for="password">设置密码</label>
+          <input
+            class="auth-input"
+            type="password"
+            id="password"
+            name="password"
+            placeholder="至少6位密码"
+            autocomplete="new-password"
+            required
+          >
+          <span class="auth-error" id="password-error"></span>
+        </div>
+
+        <!-- 确认密码 -->
+        <div class="auth-field">
+          <label class="auth-label" for="confirm-password">确认密码</label>
+          <input
+            class="auth-input"
+            type="password"
+            id="confirm-password"
+            name="confirm-password"
+            placeholder="请再次输入密码"
+            autocomplete="new-password"
+            required
+          >
+          <span class="auth-error" id="confirm-error"></span>
+        </div>
+
+        <div class="auth-error-msg" id="form-error" style="display:none"></div>
+
+        <button class="auth-btn-primary" type="submit">注册</button>
+      </form>
+
+      <div class="auth-links">
+        <a class="auth-link" href="/login">已有账号？<span class="auth-link-strong">立即登录</span></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" style="display:none"></div>
+
+  <script>
+    // 身份切换
+    var roleBtns = document.querySelectorAll('.role-btn');
+    roleBtns.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        roleBtns.forEach(function(b) { b.classList.remove('active'); });
+        this.classList.add('active');
+        document.getElementById('role-input').value = this.dataset.role;
+      });
+    });
+
+    // 检测 URL 参数 invite，自动填入邀请码
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      var invite = params.get('invite');
+      if (invite) {
+        var input = document.getElementById('invite-code');
+        input.value = invite;
+        input.readOnly = true;
+        input.style.background = '#fff7f0';
+        input.style.cursor = 'default';
+        input.placeholder = '已从邀请链接自动填入';
+        input.title = '此邀请码来自家庭分享链接，不可修改';
+      }
+    })();
+
+    function showToast(msg) {
+      var t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.display = '';
+      t.classList.remove('toast-show');
+      void t.offsetWidth;
+      t.classList.add('toast-show');
+      setTimeout(function() { t.style.display = 'none'; }, 2000);
+    }
+
+    // 验证码倒计时
+    var codeBtn = document.getElementById('code-btn');
+    var countdown = 0;
+    var timer = null;
+
+    codeBtn.addEventListener('click', function() {
+      var phone = document.getElementById('phone').value.trim();
+      if (!phone || !/^1\d{10}$/.test(phone)) {
+        document.getElementById('phone-error').textContent = '请先输入正确的手机号';
+        return;
+      }
+      document.getElementById('phone-error').textContent = '';
+
+      if (countdown > 0) return;
+
+      fetch('/api/sendSms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone }),
+      })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data.success) {
+            showToast('验证码已发送');
+            countdown = 60;
+            codeBtn.disabled = true;
+            codeBtn.textContent = countdown + 's';
+            timer = setInterval(function() {
+              countdown--;
+              if (countdown <= 0) {
+                clearInterval(timer);
+                codeBtn.disabled = false;
+                codeBtn.textContent = '获取验证码';
+              } else {
+                codeBtn.textContent = countdown + 's';
+              }
+            }, 1000);
+          } else {
+            showToast(data.message || '发送失败');
+          }
+        })
+        .catch(function() {
+          showToast('网络错误，请重试');
+        });
+    });
+
+    // 表单提交
+    document.getElementById('register-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      var phone = document.getElementById('phone').value.trim();
+      var code = document.getElementById('code').value.trim();
+      var password = document.getElementById('password').value;
+      var confirmPassword = document.getElementById('confirm-password').value;
+
+      // 清除错误
+      ['phone-error', 'code-error', 'password-error', 'confirm-error'].forEach(function(id) {
+        document.getElementById(id).textContent = '';
+      });
+      document.getElementById('form-error').style.display = 'none';
+
+      var valid = true;
+      if (!phone || !/^1\d{10}$/.test(phone)) {
+        document.getElementById('phone-error').textContent = '请输入正确的11位手机号';
+        valid = false;
+      }
+      if (!code) {
+        document.getElementById('code-error').textContent = '请输入验证码';
+        valid = false;
+      }
+      if (!password || password.length < 6) {
+        document.getElementById('password-error').textContent = '密码至少6位';
+        valid = false;
+      }
+      if (password !== confirmPassword) {
+        document.getElementById('confirm-error').textContent = '两次密码不一致';
+        valid = false;
+      }
+      if (!valid) return;
+
+      var btn = this.querySelector('.auth-btn-primary');
+      btn.disabled = true;
+      btn.textContent = '注册中…';
+
+      fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone, password: password, code: code, role: document.getElementById('role-input').value, inviteCode: document.getElementById('invite-code').value.trim() }),
+      })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data.success) {
+            showToast('注册成功，请登录');
+            setTimeout(function() { window.location.href = '/login'; }, 1200);
+          } else {
+            document.getElementById('form-error').style.display = '';
+            document.getElementById('form-error').textContent = data.message || '注册失败';
+            btn.disabled = false;
+            btn.textContent = '注册';
+          }
+        })
+        .catch(function() {
+          showToast('网络错误，请重试');
+          btn.disabled = false;
+          btn.textContent = '注册';
+        });
+    });
+  </script>
+</body>
+</html>

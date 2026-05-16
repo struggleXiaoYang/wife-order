@@ -7,22 +7,44 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <%- include('partials/navbar') %>
+
   <div class="top-nav">
     <a class="back-link" href="/">&larr; 返回</a>
     <h1 class="page-title">历史记录</h1>
     <button class="refresh-btn" id="refresh-btn">刷新</button>
+    <span class="refresh-hint" id="refresh-hint"></span>
+  </div>
+
+  <!-- 筛选区域 -->
+  <div class="history-filters">
+    <select class="history-filter-select" id="filter-days" onchange="onFilterChange()">
+      <option value="0">全部时间</option>
+      <option value="7">最近 7 天</option>
+      <option value="30">最近 30 天</option>
+      <option value="90">最近 90 天</option>
+    </select>
+    <div class="history-search-wrap">
+      <input type="text" class="history-search-input" id="filter-search" placeholder="搜索菜名…" oninput="onSearchInput()">
+    </div>
   </div>
 
   <div id="history-list"></div>
 
+  <!-- 分页 -->
+  <div class="history-pagination" id="history-pagination"></div>
+
   <script>
     var STATUS_MAP = {
-      pending:   '<span class="hst-pending">⏳ 等待接单</span>',
+      pending:   '<span class="hst-pending">⏳ 待接单</span>',
       accepted:  '<span class="hst-accepted">👌 已接单</span>',
-      cooking:   '<span class="hst-cooking">🔥 正在做</span>',
+      cooking:   '<span class="hst-cooking">🔥 烹饪中</span>',
       completed: '<span class="hst-completed">✅ 已完成</span>',
-      rejected:  '<span class="hst-rejected">😭 被拒了</span>',
+      rejected:  '<span class="hst-rejected">😭 已拒单</span>',
     };
+
+    var _currentPage = 1;
+    var _searchTimer = null;
 
     function formatTime(iso) {
       var d = new Date(iso);
@@ -31,53 +53,202 @@
         + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
     }
 
-    function loadHistory() {
-      fetch('/api/orders')
+    function renderStars(dishId, orderId, currentRating) {
+      var starsHtml = '<span class=\"star-row\" data-dish=\"' + dishId + '\" data-order=\"' + orderId + '\">';
+      for (var s = 1; s <= 5; s++) {
+        starsHtml += '<span class=\"star-char' + (s <= currentRating ? ' star-on' : '') + '\" data-score=\"' + s + '\">' + (s <= currentRating ? '★' : '☆') + '</span>';
+      }
+      starsHtml += '</span>';
+      return starsHtml;
+    }
+
+    function onFilterChange() {
+      _currentPage = 1;
+      loadHistory(1);
+      startAutoRefresh();
+    }
+
+    function onSearchInput() {
+      if (_searchTimer) clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(function() {
+        _currentPage = 1;
+        loadHistory(1);
+        startAutoRefresh();
+      }, 400);
+    }
+
+    function loadHistory(page) {
+      page = page || _currentPage;
+      _currentPage = page;
+
+      var days = document.getElementById('filter-days').value;
+      var search = document.getElementById('filter-search').value.trim();
+      var qs = '?page=' + page + '&limit=10';
+      if (days && days !== '0') qs += '&days=' + days;
+      if (search) qs += '&search=' + encodeURIComponent(search);
+
+      fetch('/api/orders' + qs)
         .then(function(res) { return res.json(); })
         .then(function(data) {
           var el = document.getElementById('history-list');
 
           if (!data.orders || data.orders.length === 0) {
-            el.innerHTML = '<div class="history-empty">'
-              + '<div class="history-empty-icon">🍽️</div>'
-              + '<p class="history-empty-text">还没有点过餐哦～</p>'
-              + '<a class="history-empty-link" href="/">去点菜</a>'
-              + '</div>';
+            el.style.opacity = '0';
+            setTimeout(function() {
+              el.innerHTML = '<div class="history-empty">'
+                + '<div class="history-empty-icon">🍽️</div>'
+                + '<p class="history-empty-text">没有找到匹配的订单</p>'
+                + '<a class="history-empty-link" href="/">去点菜</a>'
+                + '</div>';
+              el.style.opacity = '1';
+            }, 150);
+            renderPagination(data.total, data.page, data.totalPages);
             return;
           }
 
-          el.innerHTML = '';
-          data.orders.forEach(function(order) {
-            var card = document.createElement('div');
-            card.className = 'history-card';
+          var ratedMap = data.ratedMap || {};
 
-            var head = document.createElement('div');
-            head.className = 'history-head';
-            head.innerHTML = '<span class="history-time">' + formatTime(order.createdAt) + '</span>'
-              + (STATUS_MAP[order.status] || order.status);
+          // 淡出
+          el.style.opacity = '0';
+          el.style.transition = 'opacity 0.15s ease';
+          setTimeout(function() {
+            el.innerHTML = '';
+            data.orders.forEach(function(order) {
+              var card = document.createElement('div');
+              card.className = 'history-card';
 
-            var body = document.createElement('div');
-            body.className = 'history-dishes';
-            body.textContent = order.dishNames.join('、');
+              var head = document.createElement('div');
+              head.className = 'history-head';
+              head.innerHTML = '<span class="history-time">' + formatTime(order.createdAt) + '</span>'
+                + (STATUS_MAP[order.status] || order.status);
 
-            card.appendChild(head);
-            card.appendChild(body);
+              var body = document.createElement('div');
+              body.className = 'history-dishes';
+              var dishParts = [];
+              var dishNames = order.dishNames || [];
+              var dishIds = order.dishIds || [];
+              var remarks = order.remarks || [];
+              for (var j = 0; j < dishNames.length; j++) {
+                var part = '<span class=\"history-dish-line\">' + dishNames[j];
+                if (remarks[j]) part += ' <span class=\"history-remark\">(' + remarks[j] + ')</span>';
+                if (order.status === 'completed') {
+                  var rateKey = order.id + '_' + dishIds[j];
+                  var existingRating = ratedMap[rateKey] || 0;
+                  part += ' ' + renderStars(dishIds[j], order.id, existingRating);
+                }
+                part += '</span>';
+                dishParts.push(part);
+              }
+              body.innerHTML = dishParts.join('、');
 
-            // 拒单原因
-            if (order.status === 'rejected' && order.rejectReason) {
-              var reason = document.createElement('div');
-              reason.className = 'history-reason';
-              reason.textContent = '原因：' + order.rejectReason;
-              card.appendChild(reason);
-            }
+              card.appendChild(head);
+              card.appendChild(body);
 
-            el.appendChild(card);
-          });
+              if (order.status === 'rejected' && order.rejectReason) {
+                var reason = document.createElement('div');
+                reason.className = 'history-reason';
+                reason.textContent = '原因：' + order.rejectReason;
+                card.appendChild(reason);
+              }
+
+              el.appendChild(card);
+            });
+
+            // 绑定星星点击
+            el.querySelectorAll('.star-char').forEach(function(star) {
+              star.addEventListener('click', function() {
+                var dishId = this.parentElement.dataset.dish;
+                var orderId = this.parentElement.dataset.order;
+                var score = parseInt(this.dataset.score, 10);
+                rateDish(dishId, orderId, score);
+              });
+            });
+
+            // 淡入
+            el.style.opacity = '1';
+          }, 150);
+
+          renderPagination(data.total, data.page, data.totalPages);
         });
     }
 
-    document.getElementById('refresh-btn').addEventListener('click', loadHistory);
-    loadHistory();
+    function renderPagination(total, page, totalPages) {
+      var container = document.getElementById('history-pagination');
+      if (totalPages <= 1) { container.innerHTML = ''; return; }
+      var html = '<span class="hp-count">共 ' + total + ' 条记录</span>';
+      html += '<div class="hp-btns">';
+      html += '<button class="hp-btn" onclick="loadHistory(' + (page - 1) + ')"' + (page <= 1 ? ' disabled' : '') + '>‹ 上一页</button>';
+      for (var p = 1; p <= totalPages; p++) {
+        if (p === page) {
+          html += '<button class="hp-btn active">' + p + '</button>';
+        } else if (Math.abs(p - page) <= 2 || p === 1 || p === totalPages) {
+          html += '<button class="hp-btn" onclick="loadHistory(' + p + ')">' + p + '</button>';
+        } else if (p === 2 || p === totalPages - 1) {
+          html += '<span class="hp-ellipsis">...</span>';
+        }
+      }
+      html += '<button class="hp-btn" onclick="loadHistory(' + (page + 1) + ')"' + (page >= totalPages ? ' disabled' : '') + '>下一页 ›</button>';
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function rateDish(dishId, orderId, score) {
+      fetch('/api/dishes/' + dishId + '/rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ score: score, orderId: orderId }),
+      })
+        .then(function(res) { return res.json(); })
+        .then(function(r) {
+          if (r.success) { loadHistory(_currentPage); }
+          else { alert(r.message || '评分失败'); }
+        })
+        .catch(function() { alert('网络错误，请稍后重试'); });
+    }
+
+    var refreshTimer = null;
+    var refreshSeconds = 10;
+    var countdownEl = document.getElementById('refresh-hint');
+
+    function updateRefreshHint() {
+      countdownEl.textContent = refreshSeconds > 0
+        ? refreshSeconds + '秒后自动刷新'
+        : '刷新中…';
+    }
+
+    function startAutoRefresh() {
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshSeconds = 10;
+      updateRefreshHint();
+      refreshTimer = setInterval(function() {
+        refreshSeconds--;
+        updateRefreshHint();
+        if (refreshSeconds <= 0) {
+          loadHistory(_currentPage);
+          refreshSeconds = 10;
+        }
+      }, 1000);
+    }
+
+    document.getElementById('refresh-btn').addEventListener('click', function() {
+      _currentPage = 1;
+      loadHistory(1);
+      startAutoRefresh();
+    });
+    loadHistory(1);
+    startAutoRefresh();
+
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) {
+        if (refreshTimer) clearInterval(refreshTimer);
+      } else {
+        refreshSeconds = 10;
+        startAutoRefresh();
+      }
+    });
+    window.addEventListener('beforeunload', function() {
+      if (refreshTimer) clearInterval(refreshTimer);
+    });
   </script>
 </body>
 </html>

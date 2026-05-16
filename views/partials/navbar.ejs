@@ -1,0 +1,27 @@
+<% if (locals.user) { %>
+<nav class="navbar">
+  <div class="navbar-inner">
+    <span class="navbar-brand"><%= user.isAdmin ? '家庭私厨 · 管理后台' : '家庭私厨' %></span>
+    <div class="navbar-right">
+      <% if (!user.isAdmin) { %><span class="navbar-role-tag<%= user.role === 'chef' ? ' navbar-role-chef' : '' %>"><%= user.role === 'chef' ? '🧑‍🍳 大厨' : '👩 点菜员' %></span><% } %>
+      <span class="navbar-phone">你好，<%= user.phoneMasked %></span>
+      <button class="navbar-logout" id="navbar-logout">退出</button>
+    </div>
+  </div>
+</nav>
+<% } %>
+<script>
+(function() {
+  var btn = document.getElementById('navbar-logout');
+  if (btn) {
+    var isAdmin = <%= user.isAdmin ? 'true' : 'false' %>;
+    btn.addEventListener('click', function() {
+      fetch('/api/logout', { method: 'POST' })
+        .then(function(res) { return res.json(); })
+        .then(function() {
+          window.location.href = isAdmin ? '/admin/login' : '/login';
+        });
+    });
+  }
+})();
+</script>

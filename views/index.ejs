@@ -7,13 +7,747 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <%- include('partials/navbar') %>
+
+  <!-- ====== 今日一屏：30秒决策闭环 ====== -->
+  <div class="today-screen" id="today-screen">
+
+    <!-- 时间感知问候 -->
+    <div class="today-greeting" id="today-greeting">
+      <div class="greeting-text" id="greeting-text">你好呀</div>
+      <% if (locals.familyGroupName) { %>
+        <div class="greeting-family">🏠 <%= familyGroupName %></div>
+      <% } %>
+      <% if (locals.familyMembers && familyMembers.length > 0) { %>
+        <div class="greeting-members">
+          <% familyMembers.forEach(function(m) { %>
+            <span class="greeting-member-tag"><%= m.role === 'chef' ? '🧑‍🍳' : '👩' %> <%= m.phone.substring(0,3) %>****<%= m.phone.substring(7) %></span>
+          <% }); %>
+        </div>
+      <% } %>
+    </div>
+
+    <!-- 今日智能推荐 -->
+    <div class="today-section">
+      <h3 class="today-section-title">💡 今日智能推荐</h3>
+      <div class="recommend-grid" id="recommend-grid">
+        <div class="recommend-loading">正在分析你的口味偏好...</div>
+      </div>
+    </div>
+
+    <!-- 一键生成今日菜单 -->
+    <div class="today-section">
+      <div class="generate-area">
+        <button class="generate-btn" id="generate-btn" onclick="generateMenu()">
+          <span class="generate-btn-icon">🎲</span>
+          <span class="generate-btn-text">一键生成今日菜单</span>
+        </button>
+        <p class="generate-hint">主菜+配菜，30秒搞定今天吃什么</p>
+      </div>
+
+      <!-- 生成结果 -->
+      <div class="menu-result" id="menu-result" style="display:none;">
+        <div class="menu-result-title">🍽️ 今日菜单</div>
+        <div class="menu-dishes" id="menu-dishes"></div>
+        <div class="menu-shopping" id="menu-shopping"></div>
+        <div class="menu-actions">
+          <button class="menu-confirm-btn" id="menu-confirm-btn" onclick="confirmMenu()">👌 确认，就吃这些了</button>
+          <button class="menu-reroll-btn" id="menu-reroll-btn" onclick="generateMenu()">🔄 换一组</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 实时状态条 -->
+    <div class="today-status" id="today-status">
+      <span class="status-icon">👨‍🍳</span>
+      <span class="status-text" id="status-text">加载中...</span>
+    </div>
+  </div>
+
+  <% if (locals.user && locals.user.role === 'chef') { %>
+  <!-- ========== 大厨工作台 ========== -->
+  <div class="chef-funcbar" id="chef-funcbar">
+    <button class="chef-funcbtn active" data-panel="orders">📦 订单看板</button>
+    <button class="chef-funcbtn" data-panel="dishes">📋 菜品管理</button>
+    <button class="chef-funcbtn" data-panel="stats">📊 家庭数据</button>
+    <button class="chef-funcbtn" data-panel="family">⚙️ 家庭设置</button>
+  </div>
+
+  <!-- 订单看板 -->
+  <div class="chef-panel" id="panel-orders">
+    <!-- 筛选栏 -->
+    <div class="chef-order-filters">
+      <select class="chef-order-filter-select" id="chef-filter-days" onchange="chefLoadOrders(1)">
+        <option value="0">全部时间</option>
+        <option value="7">最近 7 天</option>
+        <option value="30">最近 30 天</option>
+        <option value="90">最近 90 天</option>
+      </select>
+      <div class="chef-order-search-wrap">
+        <input type="text" class="chef-order-search-input" id="chef-filter-search" placeholder="搜索菜名…" oninput="chefOnSearchInput()">
+      </div>
+    </div>
+
+    <!-- 订单列表（JS动态渲染） -->
+    <div id="chef-orders-container">
+      <div class="chef-empty">加载中...</div>
+    </div>
+
+    <!-- 分页 -->
+    <div class="chef-order-pagination" id="chef-order-pagination"></div>
+  </div>
+
+  <!-- 菜品管理 -->
+  <div class="chef-panel" id="panel-dishes" style="display:none">
+    <div class="chef-dish-toolbar">
+      <button class="chef-dish-addbtn" onclick="chefOpenDishModal()">＋ 添加菜品</button>
+    </div>
+    <div id="chef-dish-list">
+      <% (chefData.dishes || []).forEach(function(dish) { %>
+        <div class="chef-dish-row">
+          <div class="chef-dish-info">
+            <span class="chef-dish-name"><%= dish.name %></span>
+            <span class="chef-dish-cat"><%= dish.category %></span>
+            <span class="chef-dish-status <%= dish.isAvailable ? 'chef-avail-yes' : 'chef-avail-no' %>"><%= dish.isAvailable ? '上架' : '下架' %></span>
+          </div>
+          <div class="chef-dish-actions">
+            <button class="chef-btn-edit" onclick="chefOpenDishModal('<%= dish.id %>')">编辑</button>
+            <button class="chef-btn-del" data-dish-id="<%= dish.id %>" data-dish-name="<%= dish.name %>">删除</button>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+  </div>
+
+  <!-- 数据统计 -->
+  <div class="chef-panel" id="panel-stats" style="display:none">
+    <div class="chef-stats-grid">
+      <div class="chef-stat-card"><div class="chef-stat-num"><%= chefData.dishCount %></div><div class="chef-stat-label">菜品总数</div></div>
+      <div class="chef-stat-card"><div class="chef-stat-num"><%= chefData.monthOrders %></div><div class="chef-stat-label">本月订单</div></div>
+    </div>
+    <h3 class="chef-section-title" style="margin-top:20px">🔥 本月热门</h3>
+    <div id="chef-top-dishes" style="padding:0 12px">
+      <div class="chef-empty">加载中...</div>
+    </div>
+  </div>
+
+  <!-- 家庭设置 -->
+  <div class="chef-panel" id="panel-family" style="display:none">
+    <div class="chef-family-card">
+      <h3 class="chef-section-title">邀请成员</h3>
+      <p class="chef-family-hint">老婆扫码即可自动加入家庭组</p>
+      <button class="chef-family-qrbtn" id="chef-gen-qr">生成邀请二维码</button>
+      <div id="chef-qr-wrap" style="display:none;margin-top:16px;text-align:center">
+        <canvas id="chef-qr-canvas"></canvas>
+        <p style="font-size:12px;color:#bbb;margin-top:8px">邀请码：<strong id="chef-invite-code"></strong></p>
+      </div>
+      <div id="chef-bind-requests" style="margin-top:20px;text-align:left">
+        <h4 style="font-size:14px;font-weight:700;color:#333;margin-bottom:10px">待处理申请</h4>
+        <div id="chef-bind-list" class="chef-empty">加载中…</div>
+      </div>
+      <button class="chef-unbind-btn" id="chef-unbind-btn" style="margin-top:16px">解除家庭关联</button>
+    </div>
+  </div>
+
+  <!-- 菜品编辑弹窗（大厨用） -->
+  <div class="chef-modal" id="chef-dish-modal" style="display:none">
+    <div class="chef-modal-box">
+      <h3 class="chef-modal-title" id="chef-modal-title">添加菜品</h3>
+      <input type="hidden" id="chef-edit-id">
+      <input class="chef-modal-input" id="chef-dish-name" placeholder="菜名"><br>
+      <select class="chef-modal-input" id="chef-dish-cat">
+        <% (chefData.categories || []).forEach(function(cat) { %>
+          <option value="<%= cat %>"><%= cat %></option>
+        <% }); %>
+      </select><br>
+      <input class="chef-modal-input" type="file" id="chef-dish-file" accept=".jpg,.jpeg,.png,.gif"><br>
+      <input class="chef-modal-input" id="chef-dish-imgurl" placeholder="或输入图片URL"><br>
+      <textarea class="chef-modal-input" id="chef-dish-ingredients" rows="2" placeholder="食材（用、或逗号分隔）"></textarea><br>
+      <textarea class="chef-modal-input" id="chef-dish-steps" rows="3" placeholder="步骤（每行一步）"></textarea><br>
+      <label class="chef-modal-check"><input type="checkbox" id="chef-dish-avail" checked> 上架</label>
+      <div class="chef-modal-btns">
+        <button class="chef-btn-cancel" onclick="document.getElementById('chef-dish-modal').style.display='none'">取消</button>
+        <button class="chef-btn-save" onclick="chefSaveDish()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1/build/qrcode.min.js"></script>
+  <script>
+    // === 大厨面板切换 ===
+    var chefPanels = document.querySelectorAll('.chef-panel');
+    var chefBtns = document.querySelectorAll('.chef-funcbtn');
+    chefBtns.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        chefBtns.forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        chefPanels.forEach(function(p) { p.style.display = 'none'; });
+        document.getElementById('panel-' + btn.dataset.panel).style.display = '';
+        if (btn.dataset.panel === 'orders') chefLoadOrders(1);
+        if (btn.dataset.panel === 'stats') chefLoadTopDishes();
+      });
+    });
+
+    // === 订单看板：动态加载 ===
+    var _chefOrderPage = 1;
+    var _chefSearchTimer = null;
+
+    function chefLoadOrders(page) {
+      page = page || _chefOrderPage;
+      _chefOrderPage = page;
+
+      var days = document.getElementById('chef-filter-days').value;
+      var search = document.getElementById('chef-filter-search').value.trim();
+      var qs = '?page=' + page + '&limit=10';
+      if (days && days !== '0') qs += '&days=' + days;
+      if (search) qs += '&search=' + encodeURIComponent(search);
+
+      var container = document.getElementById('chef-orders-container');
+      container.innerHTML = '<div class="chef-empty">加载中...</div>';
+
+      fetch('/api/family/orders' + qs)
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          var orders = d.orders || [];
+          if (orders.length === 0) {
+            container.innerHTML = '<div class="chef-empty">没有找到匹配的订单 🍳</div>';
+            document.getElementById('chef-order-pagination').innerHTML = '';
+            return;
+          }
+          chefRenderOrders(orders);
+          chefRenderOrderPagination(d.total, d.page, d.totalPages);
+        })
+        .catch(function() {
+          container.innerHTML = '<div class="chef-empty">加载失败，请重试</div>';
+        });
+    }
+
+    function chefOnSearchInput() {
+      if (_chefSearchTimer) clearTimeout(_chefSearchTimer);
+      _chefSearchTimer = setTimeout(function() { chefLoadOrders(1); }, 400);
+    }
+
+    function chefRenderOrders(orders) {
+      var STATUS_MAP = {
+        pending:   { label: '⏳ 待接单', cls: 'st-pending' },
+        accepted:  { label: '👌 已接单', cls: 'st-accepted' },
+        cooking:   { label: '🔥 烹饪中', cls: 'st-cooking' },
+        completed: { label: '✅ 已完成', cls: 'st-completed' },
+        rejected:  { label: '😭 已拒单', cls: 'st-rejected' },
+      };
+
+      // 按状态分组
+      var groups = { pending: [], accepted: [], cooking: [], completed: [], rejected: [] };
+      orders.forEach(function(o) {
+        if (groups[o.status]) groups[o.status].push(o);
+      });
+
+      var html = '';
+      var keys = ['pending', 'accepted', 'cooking', 'completed', 'rejected'];
+      keys.forEach(function(key) {
+        var st = STATUS_MAP[key];
+        html += '<div class="chef-order-section"><h3 class="chef-section-title">' + st.label + '</h3>';
+        html += '<div class="chef-order-list">';
+        if (groups[key].length === 0) {
+          html += '<div class="chef-empty">还没有想吃的菜呢 🍳</div>';
+        } else {
+          groups[key].forEach(function(o) {
+            var time = o.createdAt ? o.createdAt.substring(0, 16).replace('T', ' ') : '';
+            var dishText = (o.dishNames || []).map(function(n, i) {
+              var s = escapeHtml(n);
+              if (o.remarks && o.remarks[i]) s += ' (' + escapeHtml(o.remarks[i]) + ')';
+              return s;
+            }).join('、');
+            html += '<div class="chef-order-card">';
+            html += '<div class="chef-order-head"><span class="chef-order-time">' + time + '</span></div>';
+            html += '<div class="chef-order-body">' + dishText + '</div>';
+            if (o.status === 'rejected' && o.rejectReason) {
+              html += '<div class="chef-order-reason">原因：' + escapeHtml(o.rejectReason) + '</div>';
+            }
+            if (o.status === 'pending') {
+              html += '<div class="chef-order-btns"><button class="chef-btn-accept" onclick="chefOrderAction(\'' + o.id + '\',\'accept\')">接单</button><button class="chef-btn-reject" onclick="chefReject(\'' + o.id + '\')">拒单</button></div>';
+            } else if (o.status === 'accepted') {
+              html += '<div class="chef-order-btns"><button class="chef-btn-cook" onclick="chefOrderAction(\'' + o.id + '\',\'cook\')">开始烹饪</button></div>';
+            } else if (o.status === 'cooking') {
+              html += '<div class="chef-order-btns"><button class="chef-btn-done" onclick="chefOrderAction(\'' + o.id + '\',\'complete\')">完成</button></div>';
+            }
+            html += '</div>';
+          });
+        }
+        html += '</div></div>';
+      });
+
+      document.getElementById('chef-orders-container').innerHTML = html;
+    }
+
+    function chefRenderOrderPagination(total, page, totalPages) {
+      var container = document.getElementById('chef-order-pagination');
+      if (totalPages <= 1) { container.innerHTML = ''; return; }
+      var html = '<span class="cop-count">共 ' + total + ' 条记录</span>';
+      html += '<div class="cop-btns">';
+      html += '<button class="cop-btn" onclick="chefLoadOrders(' + (page - 1) + ')"' + (page <= 1 ? ' disabled' : '') + '>‹ 上一页</button>';
+      for (var p = 1; p <= totalPages; p++) {
+        if (p === page) {
+          html += '<button class="cop-btn active">' + p + '</button>';
+        } else if (Math.abs(p - page) <= 2 || p === 1 || p === totalPages) {
+          html += '<button class="cop-btn" onclick="chefLoadOrders(' + p + ')">' + p + '</button>';
+        } else if (p === 2 || p === totalPages - 1) {
+          html += '<span class="cop-ellipsis">...</span>';
+        }
+      }
+      html += '<button class="cop-btn" onclick="chefLoadOrders(' + (page + 1) + ')"' + (page >= totalPages ? ' disabled' : '') + '>下一页 ›</button>';
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    // === 通用错误提示 ===
+    function chefShowError(msg) {
+      var t = document.getElementById('toast');
+      if (t) { t.textContent = msg || '网络错误，请稍后重试'; t.style.display = ''; t.classList.remove('toast-show'); void t.offsetWidth; t.classList.add('toast-show'); setTimeout(function() { t.style.display = 'none'; }, 2500); }
+      else { alert(msg || '网络错误'); }
+    }
+
+    // === 订单操作（reload替换为刷新当前页） ===
+    function chefOrderAction(orderId, action) {
+      fetch('/api/family/orders/' + orderId + '/' + action, { method: 'PUT' })
+        .then(function(r) { return r.json(); })
+        .then(function(r) { if (r.success) chefLoadOrders(_chefOrderPage); })
+        .catch(function() { chefShowError(); });
+    }
+    function chefReject(orderId) {
+      var reason = prompt('拒单原因（可选）：');
+      if (reason === null) return;
+      fetch('/api/family/orders/' + orderId + '/reject', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() }),
+      }).then(function(r) { return r.json(); })
+        .then(function(r) { if (r.success) chefLoadOrders(_chefOrderPage); })
+        .catch(function() { chefShowError(); });
+    }
+
+    // === 家庭设置：二维码 ===
+    var chefQrDone = false;
+    document.getElementById('chef-gen-qr').addEventListener('click', function() {
+      if (chefQrDone) return; chefQrDone = true;
+      var code = '<%= user.phone %>';
+      var url = location.origin + '/register?invite=' + code;
+      QRCode.toCanvas(document.getElementById('chef-qr-canvas'), url, { width: 200, margin: 1, color: { dark: '#FF7F50', light: '#fff' } }, function() {
+        document.getElementById('chef-qr-wrap').style.display = '';
+        document.getElementById('chef-invite-code').textContent = code;
+      });
+    });
+
+    // 家庭绑定请求
+    function chefLoadBindRequests() {
+      fetch('/api/family/bind/requests')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          var el = document.getElementById('chef-bind-list');
+          var list = d.requests || [];
+          if (list.length === 0) {
+            el.innerHTML = '<div class=\"chef-empty\">暂无申请记录</div>';
+            return;
+          }
+          el.innerHTML = '';
+          list.forEach(function(req) {
+            var row = document.createElement('div');
+            var isPending = req.status === 'pending';
+            var statusTag = isPending ? '' : (req.status === 'approved' ? ' ✅已同意' : ' ❌已拒绝');
+            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f5f5f5';
+            var timeStr = req.createdAt ? req.createdAt.substring(5, 16).replace('T', ' ') : '';
+            row.innerHTML = '<span style=\"font-size:14px\">📱 ' + req.applicantPhone + '<span style=\"font-size:11px;color:#aaa\">' + statusTag + '</span><span style=\"font-size:10px;color:#ccc\">' + timeStr + '</span></span>';
+            if (isPending) {
+              row.innerHTML += '<span style=\"display:flex;gap:6px;flex-shrink:0\">'
+                + '<button class=\"chef-btn-accept\" data-id=\"' + req.id + '\">同意</button>'
+                + '<button class=\"chef-btn-reject\" data-id=\"' + req.id + '\">拒绝</button>'
+                + '</span>';
+            } else {
+              row.innerHTML += '<button class=\"chef-btn-del\" data-id=\"' + req.id + '\">删除</button>';
+            }
+            el.appendChild(row);
+          });
+
+          // 同意按钮
+          el.querySelectorAll('.chef-btn-accept').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var id = this.dataset.id;
+              var row = this.closest('div');
+              this.disabled = true; this.textContent = '…';
+              fetch('/api/family/bind/approve', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: id }) })
+                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                  if (r.success) {
+                    if (row) row.remove();
+                    // 如果列表为空，显示空状态
+                    if (!document.querySelector('#chef-bind-list > div[style]')) {
+                      document.getElementById('chef-bind-list').innerHTML = '<div class=\"chef-empty\">暂无申请记录</div>';
+                    }
+                  } else { alert(r.message); chefLoadBindRequests(); }
+                });
+            });
+          });
+
+          // 拒绝按钮
+          el.querySelectorAll('.chef-btn-reject').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var id = this.dataset.id;
+              var row = this.closest('div');
+              this.disabled = true; this.textContent = '…';
+              fetch('/api/family/bind/reject', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: id }) })
+                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                  if (r.success) {
+                    if (row) row.remove();
+                    if (!document.querySelector('#chef-bind-list > div[style]')) {
+                      document.getElementById('chef-bind-list').innerHTML = '<div class=\"chef-empty\">暂无申请记录</div>';
+                    }
+                  } else { alert(r.message); chefLoadBindRequests(); }
+                });
+            });
+          });
+
+          // 删除按钮（直接点击 + 确认弹窗）
+          el.querySelectorAll('.chef-btn-del').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var id = this.dataset.id;
+              var row = this.closest('div');
+              if (!confirm('确定要删除这条记录吗？')) return;
+              this.disabled = true; this.textContent = '…';
+              fetch('/api/family/bind/requests/' + id, { method: 'DELETE' })
+                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                  if (r.success) {
+                    if (row) row.remove();
+                    if (!document.querySelector('#chef-bind-list > div[style]')) {
+                      document.getElementById('chef-bind-list').innerHTML = '<div class=\"chef-empty\">暂无申请记录</div>';
+                    }
+                  } else { alert(r.message); chefLoadBindRequests(); }
+                });
+            });
+          });
+        });
+    }
+    // 解除家庭关联
+    document.getElementById('chef-unbind-btn').addEventListener('click', function() {
+      if (!confirm('确定解除家庭关联吗？\n所有家庭成员将恢复独立数据空间。')) return;
+      fetch('/api/family/unbind', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(r) {
+          alert(r.message || (r.success ? '已解除' : '操作失败'));
+          location.reload();
+        });
+    });
+
+    // 页面加载时和切换到家庭设置时刷新
+    chefLoadBindRequests();
+    var origLoadFamily = chefLoadBindRequests;
+    // 保持每次切换到家庭tab时刷新
+    document.querySelectorAll('.chef-funcbtn[data-panel=\"family\"]').forEach(function(btn) {
+      btn.addEventListener('click', function() { setTimeout(chefLoadBindRequests, 100); });
+    });
+
+    // === 热门菜品 ===
+    function chefLoadTopDishes() {
+      fetch('/api/family/stats').then(function(r) { return r.json(); }).then(function(d) {
+        var el = document.getElementById('chef-top-dishes');
+        if (!d.topDishes || d.topDishes.length === 0) {
+          el.innerHTML = '<div class=\"chef-empty\">暂无数据</div>'; return;
+        }
+        el.innerHTML = d.topDishes.map(function(t, i) {
+          return '<div class=\"chef-top-row\"><span>' + (i + 1) + '. ' + escapeHtml(t.name) + '</span><span>' + t.count + '次</span></div>';
+        }).join('');
+      });
+    }
+
+    // === 菜品编辑 ===
+    function chefOpenDishModal(id) {
+      document.getElementById('chef-edit-id').value = id || '';
+      document.getElementById('chef-modal-title').textContent = id ? '编辑菜品' : '添加菜品';
+      if (id) {
+        var dishes = <%- JSON.stringify(chefData.dishes) %>;
+        var dish = dishes.find(function(d) { return d.id == id; });
+        if (dish) {
+          document.getElementById('chef-dish-name').value = dish.name || '';
+          document.getElementById('chef-dish-cat').value = dish.category;
+          document.getElementById('chef-dish-imgurl').value = dish.image && dish.image.indexOf('http') === 0 ? dish.image : '';
+          document.getElementById('chef-dish-ingredients').value = (dish.ingredients || []).join('、');
+          document.getElementById('chef-dish-steps').value = (dish.steps || []).join('\n');
+          document.getElementById('chef-dish-avail').checked = !!dish.isAvailable;
+        }
+      } else {
+        document.getElementById('chef-dish-name').value = '';
+        document.getElementById('chef-dish-imgurl').value = '';
+        document.getElementById('chef-dish-ingredients').value = '';
+        document.getElementById('chef-dish-steps').value = '';
+        document.getElementById('chef-dish-avail').checked = true;
+      }
+      document.getElementById('chef-dish-file').value = '';
+      document.getElementById('chef-dish-modal').style.display = 'flex';
+    }
+
+    function chefSaveDish() {
+      var fd = new FormData();
+      var id = document.getElementById('chef-edit-id').value;
+      fd.append('name', document.getElementById('chef-dish-name').value.trim());
+      fd.append('category', document.getElementById('chef-dish-cat').value);
+      fd.append('imageUrl', document.getElementById('chef-dish-imgurl').value.trim());
+      fd.append('ingredients', document.getElementById('chef-dish-ingredients').value.trim());
+      fd.append('steps', document.getElementById('chef-dish-steps').value.trim());
+      fd.append('isAvailable', document.getElementById('chef-dish-avail').checked ? 'true' : 'false');
+      var f = document.getElementById('chef-dish-file').files[0];
+      if (f) fd.append('image', f);
+
+      var url = '/api/family/dishes' + (id ? '/' + id : '');
+      var method = id ? 'PUT' : 'POST';
+      fetch(url, { method: method, body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(r) { if (r.success) location.reload(); })
+        .catch(function() { chefShowError(); });
+    }
+
+    function chefDeleteDish(id, name) {
+      if (!confirm('删除「' + name + '」？')) return;
+      fetch('/api/family/dishes/' + id, { method: 'DELETE' })
+        .then(function(r) { return r.json(); })
+        .then(function(r) { if (r.success) location.reload(); })
+        .catch(function() { chefShowError(); });
+    }
+
+    // 菜品删除按钮（数据属性绑定，避免 XSS）
+    document.getElementById('chef-dish-list').addEventListener('click', function(e) {
+      var btn = e.target.closest('.chef-btn-del');
+      if (!btn) return;
+      var id = btn.dataset.dishId;
+      var name = btn.dataset.dishName;
+      chefDeleteDish(id, name);
+    });
+
+    document.getElementById('chef-dish-modal').addEventListener('click', function(e) {
+      if (e.target === this) this.style.display = 'none';
+    });
+  </script>
+
+  <% } else { %>
+
+  <!-- 绑定状态区域（点菜员专属） -->
+  <div id="bind-status-bar" style="display:none">
+    <div class="bind-card-unbound" id="bind-card-unbound" style="display:none">
+      <div class="bind-card-icon">🏠</div>
+      <h3 class="bind-card-title">你还没有绑定家庭组</h3>
+      <p class="bind-card-desc">绑定后，你的点菜将同步到大厨的管理端</p>
+      <div class="bind-card-btns">
+        <button class="bind-btn-scan" id="bind-scan-btn">📷 扫码绑定</button>
+        <button class="bind-btn-code" id="bind-code-btn">✍️ 输入邀请码</button>
+      </div>
+    </div>
+    <div class="bind-card-bound" id="bind-card-bound" style="display:none">
+      <span class="bind-bound-tag">🏠 已绑定家庭：<strong id="bind-family-name">--</strong></span>
+      <button class="bind-exit-btn" id="bind-exit-btn">退出家庭</button>
+    </div>
+  </div>
+
+  <!-- 扫码模态 -->
+  <div class="bind-modal" id="bind-scan-modal" style="display:none">
+    <div class="bind-modal-box">
+      <h3 class="bind-modal-title">扫描邀请二维码</h3>
+      <div id="qr-reader" style="width:100%"></div>
+      <p class="bind-scan-hint" id="scan-hint">将二维码对准框内</p>
+      <button class="bind-modal-close" onclick="closeScanModal()">取消</button>
+    </div>
+  </div>
+
+  <!-- 输入邀请码模态 -->
+  <div class="bind-modal" id="bind-code-modal" style="display:none">
+    <div class="bind-modal-box">
+      <h3 class="bind-modal-title">输入邀请码</h3>
+      <p class="bind-code-desc">输入老公的手机号作为邀请码</p>
+      <input class="bind-code-input" type="tel" id="bind-invite-input" placeholder="请输入11位手机号" maxlength="11">
+      <p class="bind-code-err" id="bind-code-err"></p>
+      <div class="bind-modal-btns">
+        <button class="bind-modal-close" onclick="document.getElementById('bind-code-modal').style.display='none'">取消</button>
+        <button class="bind-btn-submit" id="bind-submit-btn">提交申请</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 扫码结果提示 -->
+  <div class="toast" id="scan-toast" style="display:none"></div>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script>
+    // === 绑定状态检测 ===
+    (function initBind() {
+      fetch('/api/bind/status')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.success) return;
+          document.getElementById('bind-status-bar').style.display = '';
+          if (d.bound) {
+            document.getElementById('bind-card-bound').style.display = '';
+            document.getElementById('bind-card-unbound').style.display = 'none';
+            document.getElementById('bind-family-name').textContent = d.familyGroup ? d.familyGroup.name : '--';
+            document.getElementById('bind-exit-btn').onclick = function() {
+              if (!confirm('确定退出家庭组吗？退出后将恢复独立数据空间。')) return;
+              fetch('/api/family/unbind', { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function(r) { alert(r.message || (r.success ? '已退出' : '')); location.reload(); });
+            };
+          } else if (d.pendingRequest) {
+            document.getElementById('bind-card-unbound').style.display = '';
+            document.getElementById('bind-card-bound').style.display = 'none';
+            document.getElementById('bind-card-unbound').querySelector('.bind-card-title').textContent = '⏳ 绑定申请审核中';
+            document.getElementById('bind-card-unbound').querySelector('.bind-card-desc').textContent = '已申请绑定 ' + d.pendingRequest.targetPhone + ' 的家庭组，等待大厨确认';
+            document.getElementById('bind-card-unbound').querySelector('.bind-card-btns').style.display = 'none';
+          } else if (d.rejected) {
+            document.getElementById('bind-card-unbound').style.display = '';
+            document.getElementById('bind-card-bound').style.display = 'none';
+            document.getElementById('bind-card-unbound').querySelector('.bind-card-title').textContent = '🏠 ❌ 申请已被拒绝';
+            document.getElementById('bind-card-unbound').querySelector('.bind-card-desc').textContent = '大厨拒绝了你的绑定申请';
+            var btns = document.getElementById('bind-card-unbound').querySelector('.bind-card-btns');
+            btns.style.display = '';
+            btns.innerHTML = '<button class=\"bind-btn-gotit\" id=\"bind-gotit-btn\">知道了</button>';
+            document.getElementById('bind-gotit-btn').addEventListener('click', function() {
+              document.getElementById('bind-card-unbound').querySelector('.bind-card-title').textContent = '🏠 你还没有绑定家庭组';
+              document.getElementById('bind-card-unbound').querySelector('.bind-card-desc').textContent = '绑定后，你的点菜将同步到大厨的管理端';
+              btns.innerHTML = '<button class=\"bind-btn-scan\" id=\"bind-scan-btn\">📷 扫码绑定</button><button class=\"bind-btn-code\" id=\"bind-code-btn\">✍️ 输入邀请码</button>';
+              document.getElementById('bind-scan-btn').addEventListener('click', function() {
+                if (typeof Html5Qrcode === 'undefined') { showBindToast('请使用手机浏览器打开此页面进行扫码'); return; }
+                document.getElementById('bind-scan-modal').style.display = 'flex';
+                html5QrScanner = new Html5Qrcode('qr-reader');
+                html5QrScanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 250 }, function(decodedText) {
+                  var match = decodedText.match(/[?&]invite=([^&]+)/);
+                  if (match) { stopScanner(); document.getElementById('bind-scan-modal').style.display = 'none'; submitBindApply(match[1]); }
+                }, function() {}).catch(function() { document.getElementById('scan-hint').textContent = '无法启动摄像头，请使用输入邀请码方式'; });
+              });
+              document.getElementById('bind-code-btn').addEventListener('click', function() {
+                document.getElementById('bind-code-modal').style.display = 'flex';
+                document.getElementById('bind-invite-input').value = '';
+                document.getElementById('bind-code-err').textContent = '';
+              });
+            });
+          } else {
+            document.getElementById('bind-card-unbound').style.display = '';
+            document.getElementById('bind-card-bound').style.display = 'none';
+          }
+        })
+        .catch(function() { /* 接口不存在则静默跳过 */ });
+    })();
+
+    // === 扫码绑定 ===
+    var html5QrScanner = null;
+    document.getElementById('bind-scan-btn').addEventListener('click', function() {
+      if (typeof Html5Qrcode === 'undefined') {
+        showBindToast('请使用手机浏览器打开此页面进行扫码');
+        return;
+      }
+      document.getElementById('bind-scan-modal').style.display = 'flex';
+      html5QrScanner = new Html5Qrcode('qr-reader');
+      html5QrScanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: 250 },
+        function(decodedText) {
+          // 解析 invite 参数
+          var match = decodedText.match(/[?&]invite=([^&]+)/);
+          if (match) {
+            stopScanner();
+            document.getElementById('bind-scan-modal').style.display = 'none';
+            submitBindApply(match[1]);
+          }
+        },
+        function() { /* ignore scan errors */ }
+      ).catch(function() {
+        document.getElementById('scan-hint').textContent = '无法启动摄像头，请使用输入邀请码方式';
+      });
+    });
+
+    function closeScanModal() {
+      stopScanner();
+      document.getElementById('bind-scan-modal').style.display = 'none';
+    }
+
+    function stopScanner() {
+      if (html5QrScanner) {
+        try { html5QrScanner.stop().catch(function() {}); } catch(e) {}
+        html5QrScanner = null;
+      }
+    }
+
+    document.getElementById('bind-scan-modal').addEventListener('click', function(e) {
+      if (e.target === this) closeScanModal();
+    });
+
+    // === 输入邀请码 ===
+    document.getElementById('bind-code-btn').addEventListener('click', function() {
+      document.getElementById('bind-code-modal').style.display = 'flex';
+      document.getElementById('bind-invite-input').value = '';
+      document.getElementById('bind-code-err').textContent = '';
+    });
+
+    document.getElementById('bind-code-modal').addEventListener('click', function(e) {
+      if (e.target === this) this.style.display = 'none';
+    });
+
+    document.getElementById('bind-submit-btn').addEventListener('click', function() {
+      var phone = document.getElementById('bind-invite-input').value.trim();
+      if (!phone || !/^1\d{10}$/.test(phone)) {
+        document.getElementById('bind-code-err').textContent = '请输入正确的11位手机号';
+        return;
+      }
+      submitBindApply(phone);
+    });
+
+    function submitBindApply(phone) {
+      var btn = document.getElementById('bind-submit-btn');
+      btn.disabled = true;
+      btn.textContent = '提交中…';
+      fetch('/api/bind/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone }),
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          btn.disabled = false;
+          btn.textContent = '提交申请';
+          document.getElementById('bind-code-modal').style.display = 'none';
+          if (d.success) {
+            showBindToast('绑定申请已发送，等待大厨确认');
+            // 更新UI为审核中
+            document.getElementById('bind-card-unbound').querySelector('.bind-card-title').textContent = '⏳ 绑定申请审核中';
+            document.getElementById('bind-card-unbound').querySelector('.bind-card-desc').textContent = '已申请绑定 ' + phone + ' 的家庭组，等待大厨确认';
+            document.getElementById('bind-card-unbound').querySelector('.bind-card-btns').style.display = 'none';
+          } else {
+            showBindToast(d.message || '提交失败');
+            document.getElementById('bind-code-err').textContent = d.message || '';
+          }
+        })
+        .catch(function() {
+          btn.disabled = false;
+          btn.textContent = '提交申请';
+          showBindToast('网络错误，请重试');
+        });
+    }
+
+    function showBindToast(msg) {
+      var t = document.getElementById('scan-toast');
+      if (!t) { alert(msg); return; }
+      t.textContent = msg;
+      t.style.display = '';
+      t.classList.remove('toast-show');
+      void t.offsetWidth;
+      t.classList.add('toast-show');
+      setTimeout(function() { t.style.display = 'none'; }, 2500);
+    }
+  </script>
+
   <div class="top-nav">
     <h1 class="page-title">今天想吃什么？</h1>
     <a class="history-link" href="/history">历史</a>
   </div>
 
   <div class="spin-btn-wrapper">
-    <button class="spin-btn" id="spin-btn">🎰 今天吃什么？点我决定！</button>
+    <button class="spin-btn" id="spin-btn">🍲 今天辛苦了，吃点热乎的吧</button>
     <p class="spin-btn-hint" id="spin-btn-hint" style="display:none">菜品不够转盘玩，先让老公多加几道菜吧～</p>
   </div>
 
@@ -25,15 +759,21 @@
 
   <div class="dish-grid">
     <% dishes.forEach(function(dish) { %>
-      <div class="dish-card" data-category="<%= dish.category %>">
+      <div class="dish-card<%= dish.isSoldOut ? ' dish-sold-out' : '' %>" data-category="<%= dish.category %>">
         <% if (dish.image) { %>
-          <img class="dish-img" src="<%= dish.image %>" alt="<%= dish.name %>" loading="lazy"
+          <img class="dish-img" src="<%= dish.image.indexOf('http') === 0 ? dish.image : '/uploads/' + dish.image %>" alt="<%= dish.name %>" loading="lazy"
                onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
           <div class="dish-img-placeholder" style="display:none">🍽️</div>
         <% } %>
+        <% if (dish.avgRating > 0) { %>
+          <span class="dish-rating">⭐<%= dish.avgRating %></span>
+        <% } %>
+        <% if (dish.isSoldOut) { %>
+          <span class="sold-out-badge">今日售罄</span>
+        <% } %>
         <h3 class="dish-name"><%= dish.name %></h3>
         <p class="dish-ingredients">食材：<%= dish.ingredients.join('、') %></p>
-        <button class="want-btn" data-id="<%= dish.id %>">想吃</button>
+        <button class="want-btn<%= dish.isSoldOut ? ' want-btn-off' : '' %>" data-id="<%= dish.id %>"<%= dish.isSoldOut ? ' disabled' : '' %>>想吃</button>
       </div>
     <% }); %>
   </div>
@@ -65,6 +805,12 @@
 
   <!-- Toast -->
   <div class="toast" id="toast" style="display:none"></div>
+
+  <!-- 已选菜品备注 -->
+  <div class="remark-panel" id="remark-panel" style="display:none">
+    <div class="remark-panel-title">已选菜品</div>
+    <div id="remark-list"></div>
+  </div>
 
   <!-- 底部浮窗 -->
   <div class="bottom-bar">
@@ -124,18 +870,45 @@
     })();
 
     // === 点餐逻辑 ===
-    const selected = new Set();
+    var selected = {}; // { dishId: {id, name, remark} }
+
+    function updateRemarkPanel() {
+      var panel = document.getElementById('remark-panel');
+      var list = document.getElementById('remark-list');
+      var ids = Object.keys(selected);
+      if (ids.length === 0) {
+        panel.style.display = 'none';
+        return;
+      }
+      panel.style.display = '';
+      var html = '';
+      ids.forEach(function(id) {
+        var s = selected[id];
+        html += '<div class="remark-row"><span class="remark-dish-name">' + escapeHtml(s.name) + '</span>'
+          + '<input class="remark-input" type="text" data-id="' + id + '" placeholder="备注，如少放辣" value="' + escapeHtml(s.remark || '') + '" maxlength="200">'
+          + '</div>';
+      });
+      list.innerHTML = html;
+      // 绑定输入事件
+      list.querySelectorAll('.remark-input').forEach(function(inp) {
+        inp.addEventListener('input', function() {
+          var sid = this.dataset.id;
+          if (selected[sid]) selected[sid].remark = this.value;
+        });
+      });
+    }
 
     document.querySelectorAll('.want-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var id = this.dataset.id;
+        var name = this.closest('.dish-card').querySelector('.dish-name').textContent;
         var countEl = document.getElementById('count');
-        if (selected.has(id)) {
-          selected.delete(id);
+        if (selected[id]) {
+          delete selected[id];
           this.textContent = '想吃';
           this.classList.remove('on');
         } else {
-          selected.add(id);
+          selected[id] = { id: id, name: name, remark: '' };
           this.textContent = '取消';
           this.classList.add('on');
 
@@ -162,7 +935,9 @@
             setTimeout(function() { countEl.style.transform = 'scale(1)'; }, 180);
           };
         }
-        countEl.textContent = selected.size;
+        var cnt = Object.keys(selected).length;
+        countEl.textContent = cnt;
+        updateRemarkPanel();
       });
     });
 
@@ -389,10 +1164,11 @@
       confirmBtn.addEventListener('click', function() {
         var dish = dishes[winningIdx];
         var id = dish.id;
-        selected.add(id);
+        selected[id] = { id: id, name: dish.name, remark: '' };
+        updateRemarkPanel();
         var wb = document.querySelector('.want-btn[data-id="' + id + '"]');
         if (wb) { wb.textContent = '取消'; wb.classList.add('on'); }
-        document.getElementById('count').textContent = selected.size;
+        document.getElementById('count').textContent = Object.keys(selected).length;
         overlay.style.display = 'none';
         if (animId) cancelAnimationFrame(animId);
         spinning = false;
@@ -403,23 +1179,48 @@
     })();
 
     document.getElementById('submit-btn').addEventListener('click', function() {
-      if (selected.size === 0) {
+      var selKeys = Object.keys(selected);
+      if (selKeys.length === 0) {
         alert('还没选菜呢～');
         return;
       }
 
+      var items = selKeys.map(function(k) {
+        return { dishId: selected[k].id, remark: selected[k].remark || '' };
+      });
+
       fetch('/api/order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dishIds: Array.from(selected) })
+        body: JSON.stringify({ items: items })
       })
         .then(function(res) { return res.json(); })
         .then(function(data) {
           if (data.success) {
+            // 采购清单弹窗
+            if (data.shoppingList && data.shoppingList.length > 0) {
+              (function showShoppingList() {
+                var shopOverlay = document.createElement('div');
+                shopOverlay.className = 'shop-overlay';
+                var shopCard = document.createElement('div');
+                shopCard.className = 'shop-card';
+                shopCard.innerHTML = '<h2 class=\"shop-title\">📋 今日采购清单</h2>'
+                  + '<div class=\"shop-list\">'
+                  + data.shoppingList.map(function(it, i) { return '<span class=\"shop-item\">' + (i + 1) + '. ' + it + '</span>'; }).join('')
+                  + '</div>'
+                  + '<button class=\"shop-close-btn\">知道了，去买菜 🛒</button>';
+                shopOverlay.appendChild(shopCard);
+                document.body.appendChild(shopOverlay);
+                var closeBtn = shopCard.querySelector('.shop-close-btn');
+                closeBtn.addEventListener('click', function() { shopOverlay.remove(); });
+                shopOverlay.addEventListener('click', function(e) { if (e.target === shopOverlay) shopOverlay.remove(); });
+              })();
+            }
+
             // 飘心庆祝
             (function celebrate() {
               var PHRASES = [
-                '菜单已送达厨房！🧑‍🍳',
+                '今晚菜单已经安排好啦 ✨',
                 '老公收到！准备大展身手 🔥',
                 '坐等投喂吧～😋',
                 '今天也是被爱的一天 💕',
@@ -460,14 +1261,244 @@
               // 清理
               setTimeout(function() {
                 overlay.remove();
-                selected.clear();
+                selected = {};
+                updateRemarkPanel();
                 document.querySelectorAll('.want-btn').forEach(function(b) { b.textContent = '想吃'; b.classList.remove('on'); });
                 document.getElementById('count').textContent = 0;
               }, 2600);
             })();
           }
+        }).catch(function() {
+          var t = document.getElementById('toast');
+          if (t) { t.textContent = '网络错误，请稍后重试'; t.style.display = ''; t.classList.remove('toast-show'); void t.offsetWidth; t.classList.add('toast-show'); setTimeout(function() { t.style.display = 'none'; }, 2500); }
         });
     });
+  </script>
+  <% } %>
+
+  <!-- ====== 今日一屏 JS（厨师和点菜员共享） ====== -->
+  <script>
+  (function() {
+    // 时间感知问候
+    var hour = new Date().getHours();
+    var greeting = '晚上好 🌙';
+    if (hour >= 5 && hour < 12) greeting = '早上好 ☀️';
+    else if (hour >= 12 && hour < 18) greeting = '中午好 🌤️';
+    document.getElementById('greeting-text').textContent = greeting;
+
+    // 加载推荐
+    loadRecommendations();
+
+    // 检查实时状态
+    checkKitchenStatus();
+  })();
+
+  function loadRecommendations() {
+    fetch('/api/recommend/today')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var grid = document.getElementById('recommend-grid');
+        var list = d.recommendations || [];
+        if (list.length === 0) {
+          grid.innerHTML = '<div class="recommend-empty">暂无推荐菜品，先让大厨添加几道菜吧~</div>';
+          return;
+        }
+        grid.innerHTML = list.map(function(item, i) {
+          var badge = i === 0 ? '🏆 首选' : (i === 1 ? '🥈 备选' : '🥉 备选');
+          return '<div class="recommend-card" data-dish-id="' + item.id + '" data-dish-name="' + escapeHtml(item.name) + '" onclick="quickOrder(this.dataset.dishId,this.dataset.dishName)">'
+            + '<div class="recommend-badge">' + badge + '</div>'
+            + '<div class="recommend-name">' + escapeHtml(item.name) + '</div>'
+            + '<div class="recommend-reason">' + escapeHtml(item.reason) + '</div>'
+            + '</div>';
+        }).join('');
+      })
+      .catch(function() {
+        document.getElementById('recommend-grid').innerHTML = '<div class="recommend-empty">加载失败，请刷新重试</div>';
+      });
+  }
+
+  function quickOrder(dishId, dishName) {
+    dishId = String(dishId);
+    // 使用现有点餐逻辑（与 want-btn 点击一致）
+    if (window.selected && window.updateRemarkPanel) {
+      if (window.selected[dishId]) {
+        delete window.selected[dishId];
+      } else {
+        window.selected[dishId] = { id: dishId, name: dishName, remark: '' };
+      }
+      window.updateRemarkPanel();
+      document.getElementById('count').textContent = Object.keys(window.selected).length;
+      // 同步按钮状态
+      var wb = document.querySelector('.want-btn[data-id="' + dishId + '"]');
+      if (wb) {
+        if (window.selected[dishId]) { wb.textContent = '取消'; wb.classList.add('on'); }
+        else { wb.textContent = '想吃'; wb.classList.remove('on'); }
+      }
+    } else {
+      // 回退：直接点菜
+      var wb = document.querySelector('.want-btn[data-id="' + dishId + '"]');
+      if (wb) wb.click();
+    }
+  }
+
+  // 一键生成菜单
+  var _generatedMenu = null;
+  function generateMenu() {
+    var btn = document.getElementById('generate-btn');
+    btn.disabled = true;
+    btn.querySelector('.generate-btn-text').textContent = '正在生成...';
+    fetch('/api/menu/generate', { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        btn.disabled = false;
+        btn.querySelector('.generate-btn-text').textContent = '🎲 一键生成今日菜单';
+        if (!d.success) { alert(d.message); return; }
+        _generatedMenu = d.menu;
+        var resultDiv = document.getElementById('menu-result');
+        resultDiv.style.display = '';
+
+        // 菜品展示
+        var dishesHtml = d.menu.map(function(dish, i) {
+          var role = i === 0 ? '🥩 主菜' : '🥬 配菜';
+          var stars = dish.avgRating > 0 ? ' ⭐' + dish.avgRating.toFixed(1) : '';
+          return '<div class="menu-dish-item">'
+            + '<span class="menu-dish-role">' + role + '</span>'
+            + '<span class="menu-dish-name">' + escapeHtml(dish.name) + '</span>'
+            + '<span class="menu-dish-stars">' + stars + '</span>'
+            + '</div>';
+        }).join('');
+        document.getElementById('menu-dishes').innerHTML = dishesHtml;
+
+        // 采购清单
+        var shopHtml = '';
+        if (d.shoppingList && d.shoppingList.length > 0) {
+          shopHtml = '<div class="menu-shopping-title">📋 采购清单</div>'
+            + '<div class="menu-shopping-list">'
+            + d.shoppingList.map(function(it, i) { return '<span class="menu-shop-item">' + (i+1) + '. ' + escapeHtml(it) + '</span>'; }).join('')
+            + '</div>';
+        }
+        document.getElementById('menu-shopping').innerHTML = shopHtml;
+
+        resultDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      })
+      .catch(function() {
+        btn.disabled = false;
+        btn.querySelector('.generate-btn-text').textContent = '🎲 一键生成今日菜单';
+        alert('生成失败，请重试');
+      });
+  }
+
+  function confirmMenu() {
+    if (!_generatedMenu || _generatedMenu.length === 0) return;
+    var items = _generatedMenu.map(function(d) { return { dishId: d.id, remark: '' }; });
+    fetch('/api/order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: items })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.success) {
+          document.getElementById('menu-result').style.display = 'none';
+          _generatedMenu = null;
+          // 使用现有庆祝逻辑
+          if (d.shoppingList && d.shoppingList.length > 0) {
+            showShoppingListPopup(d.shoppingList);
+          }
+          showCelebrate();
+        } else {
+          alert(d.message || '下单失败');
+        }
+      }).catch(function() { alert('网络错误，请稍后重试'); });
+  }
+
+  function showShoppingListPopup(list) {
+    var overlay = document.createElement('div');
+    overlay.className = 'shop-overlay';
+    var card = document.createElement('div');
+    card.className = 'shop-card';
+    card.innerHTML = '<h2 class="shop-title">📋 今日采购清单</h2>'
+      + '<div class="shop-list">'
+      + list.map(function(it, i) { return '<span class="shop-item">' + (i+1) + '. ' + it + '</span>'; }).join('')
+      + '</div>'
+      + '<button class="shop-close-btn">知道了，去买菜 🛒</button>';
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    card.querySelector('.shop-close-btn').addEventListener('click', function() { overlay.remove(); });
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+  }
+
+  function showCelebrate() {
+    var PHRASES = ['今晚菜单已安排 ✨', '老公收到！准备大展身手 🔥', '坐等投喂吧～😋', '今天也是被爱的一天 💕'];
+    var HEART_COLORS = ['#ff6b8a','#FF7F50','#ff4d6d','#ffb3ba','#ff8a80','#f48fb1'];
+    var overlay = document.createElement('div');
+    overlay.className = 'celebrate-overlay';
+    document.body.appendChild(overlay);
+    var text = document.createElement('div');
+    text.className = 'celebrate-text';
+    text.textContent = PHRASES[Math.floor(Math.random() * PHRASES.length)];
+    overlay.appendChild(text);
+    var vw = window.innerWidth, vh = window.innerHeight;
+    for (var i = 0; i < 7; i++) {
+      var heart = document.createElement('div');
+      heart.className = 'floating-heart';
+      heart.textContent = '❤️';
+      heart.style.left = (vw * 0.15 + Math.random() * vw * 0.7) + 'px';
+      heart.style.bottom = '0px';
+      heart.style.fontSize = (20 + Math.random() * 30) + 'px';
+      heart.style.color = HEART_COLORS[Math.floor(Math.random() * HEART_COLORS.length)];
+      heart.style.animationDuration = (2000 + Math.random() * 1000) + 'ms';
+      heart.style.setProperty('--wiggle', ((Math.random() - 0.5) * 60) + 'px');
+      heart.style.setProperty('--rise', (-(vh * 0.7 + Math.random() * vh * 0.3)) + 'px');
+      overlay.appendChild(heart);
+    }
+    setTimeout(function() {
+      overlay.remove();
+      if (window.selected) {
+        window.selected = {};
+        if (window.updateRemarkPanel) window.updateRemarkPanel();
+        var wbs = document.querySelectorAll('.want-btn');
+        wbs.forEach(function(b) { b.textContent = '想吃'; b.classList.remove('on'); });
+        document.getElementById('count').textContent = '0';
+      }
+    }, 2600);
+  }
+
+  function checkKitchenStatus() {
+    var statusText = document.getElementById('status-text');
+    // 淡出
+    statusText.style.opacity = '0';
+    statusText.style.transition = 'opacity 0.15s ease';
+
+    fetch('/api/family/cooking-status')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        setTimeout(function() {
+          if (d.cooking) {
+            statusText.textContent = '大厨正在做：' + d.dishName + ' | 🔥 马上开饭';
+          } else {
+            statusText.textContent = '厨房暂时空闲，快去点菜吧~';
+          }
+          // 淡入
+          statusText.style.opacity = '1';
+        }, 150);
+      })
+      .catch(function() {
+        setTimeout(function() {
+          statusText.textContent = '厨房暂时空闲';
+          statusText.style.opacity = '1';
+        }, 150);
+      });
+  }
+
+  // 每15秒轮询厨房状态
+  var _kitchenStatusTimer = setInterval(checkKitchenStatus, 15000);
+  window.addEventListener('beforeunload', function() { clearInterval(_kitchenStatusTimer); });
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
   </script>
 </body>
 </html>

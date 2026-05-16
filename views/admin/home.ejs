@@ -5,17 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>管理后台</title>
   <link rel="stylesheet" href="/admin.css">
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1/build/qrcode.min.js"></script>
 </head>
 <body>
-  <div class="admin-header">
-    <h1>管理后台</h1>
-    <a class="logout-link" href="/admin/logout">退出</a>
-  </div>
+  <%- include('../partials/navbar') %>
 
   <div class="admin-tabs">
     <button class="admin-tab active" data-view="orders">订单管理</button>
     <button class="admin-tab" data-view="dishes">菜品管理</button>
     <button class="admin-tab" data-view="categories">分类管理</button>
+    <button class="admin-tab" data-view="family">家庭管理</button>
+    <button class="admin-tab" data-view="inventory">库存管理</button>
+    <button class="admin-tab" data-view="stats">数据统计</button>
   </div>
 
   <!-- 订单视图 -->
@@ -40,6 +41,53 @@
     <div id="cat-list"></div>
   </div>
 
+  <!-- 库存管理视图 -->
+  <div class="admin-view" id="view-inventory" style="display:none">
+    <div class="inv-toolbar">
+      <input class="inv-input-name" id="inv-name" placeholder="食材名（如五花肉）">
+      <input class="inv-input-qty" id="inv-qty" type="number" placeholder="数量" min="0" step="0.1" value="0">
+      <input class="inv-input-unit" id="inv-unit" placeholder="单位" value="份">
+      <button class="inv-add-btn" id="inv-add-btn">＋ 添加</button>
+    </div>
+    <div id="inv-list"></div>
+  </div>
+
+  <!-- 数据统计视图 -->
+  <div class="admin-view" id="view-stats" style="display:none">
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">本月订单数</div>
+        <div class="stat-value" id="stat-order-count">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">菜品总数</div>
+        <div class="stat-value" id="stat-dish-count">-</div>
+      </div>
+      <div class="stat-card stat-card-wide">
+        <div class="stat-label">⭐ 最高评分</div>
+        <div class="stat-value" id="stat-top-rated" style="font-size:18px">-</div>
+      </div>
+    </div>
+    <div class="stat-section">
+      <h3 class="stat-section-title">🔥 本月热门菜品 Top 5</h3>
+      <div id="stat-top-dishes"></div>
+    </div>
+  </div>
+
+  <!-- 家庭管理视图 -->
+  <div class="admin-view" id="view-family" style="display:none">
+    <div class="family-card">
+      <h3 class="family-title">邀请成员加入家庭</h3>
+      <p class="family-desc">老婆扫描二维码即可自动加入你的家庭组</p>
+      <button class="family-qr-btn" id="gen-qr-btn">生成邀请二维码</button>
+      <div class="family-qr-wrap" id="qr-wrap" style="display:none">
+        <canvas id="qr-canvas"></canvas>
+        <p class="family-invite-code">邀请码：<strong id="invite-code-text"></strong></p>
+        <p class="family-qr-hint">用手机扫描二维码，或直接访问下方链接注册</p>
+      </div>
+    </div>
+  </div>
+
   <!-- 模态弹窗 -->
   <div class="modal-overlay" id="modal-overlay" style="display:none">
     <div class="modal-box">
@@ -52,8 +100,10 @@
         <label class="form-label">分类</label>
         <select class="form-input" id="dish-category" required></select>
 
-        <label class="form-label">图片URL</label>
-        <input class="form-input" type="text" id="dish-image" placeholder="可选">
+        <label class="form-label">图片上传</label>
+        <input class="form-input" type="file" id="dish-image-file" accept=".jpg,.jpeg,.png,.gif">
+        <label class="form-label" style="margin-top:8px">图片URL</label>
+        <input class="form-input" type="text" id="dish-image" placeholder="或输入图片URL（文件上传优先）">
 
         <label class="form-label">食材（用 、或逗号分隔）</label>
         <textarea class="form-textarea" id="dish-ingredients" rows="2"></textarea>
@@ -107,7 +157,15 @@
 
             var body = document.createElement('div');
             body.className = 'order-dishes';
-            body.textContent = order.dishNames.join('、');
+            var dishParts = [];
+            var dishNames = order.dishNames || [];
+            var remarks = order.remarks || [];
+            for (var j = 0; j < dishNames.length; j++) {
+              var part = dishNames[j];
+              if (remarks[j]) part += ' <span class=\"order-remark\">(' + remarks[j] + ')</span>';
+              dishParts.push(part);
+            }
+            body.innerHTML = dishParts.join('、');
 
             card.appendChild(head);
             card.appendChild(body);
@@ -125,7 +183,6 @@
             btns.className = 'order-btns';
 
             if (order.status === 'pending') {
-              // 接单
               var acceptBtn = document.createElement('button');
               acceptBtn.className = 'obtn-accept';
               acceptBtn.textContent = '接单';
@@ -135,13 +192,12 @@
                   .then(function(r) { if (r.success) loadOrders(); });
               });
 
-              // 拒单
               var rejectBtn = document.createElement('button');
               rejectBtn.className = 'obtn-reject';
               rejectBtn.textContent = '拒单';
               rejectBtn.addEventListener('click', function() {
                 var reason = prompt('请输入拒单原因：');
-                if (reason === null) return; // 点取消
+                if (reason === null) return;
                 fetch('/api/admin/orders/' + order.id + '/reject', {
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },
@@ -327,13 +383,13 @@
       editingId = dish ? dish.id : null;
       document.getElementById('dish-id').value = dish ? dish.id : '';
       document.getElementById('dish-name').value = dish ? dish.name : '';
-      document.getElementById('dish-image').value = dish ? (dish.image || '') : '';
+      document.getElementById('dish-image').value = dish && dish.image && dish.image.indexOf('http') === 0 ? dish.image : '';
+      document.getElementById('dish-image-file').value = '';
       document.getElementById('dish-ingredients').value = dish ? (dish.ingredients || []).join('、') : '';
       document.getElementById('dish-steps').value = dish ? (dish.steps || []).join('\n') : '';
       document.getElementById('dish-available').checked = dish ? dish.isAvailable : true;
       document.getElementById('modal-title').textContent = dish ? '编辑菜品' : '添加菜品';
 
-      // 加载分类下拉
       fetch('/api/admin/categories')
         .then(function(res) { return res.json(); })
         .then(function(data) {
@@ -364,20 +420,18 @@
     document.getElementById('dish-form').addEventListener('submit', function(e) {
       e.preventDefault();
 
-      var ingredientsStr = document.getElementById('dish-ingredients').value.trim();
-      var ingredients = ingredientsStr ? ingredientsStr.split(/[、,，]/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
+      var formData = new FormData();
+      formData.append('name', document.getElementById('dish-name').value.trim());
+      formData.append('category', document.getElementById('dish-category').value);
+      formData.append('ingredients', document.getElementById('dish-ingredients').value.trim());
+      formData.append('steps', document.getElementById('dish-steps').value.trim());
+      formData.append('isAvailable', document.getElementById('dish-available').checked ? 'true' : 'false');
+      formData.append('imageUrl', document.getElementById('dish-image').value.trim());
 
-      var stepsStr = document.getElementById('dish-steps').value.trim();
-      var steps = stepsStr ? stepsStr.split('\n').map(function(s) { return s.trim(); }).filter(Boolean) : [];
-
-      var body = {
-        name: document.getElementById('dish-name').value.trim(),
-        category: document.getElementById('dish-category').value,
-        image: document.getElementById('dish-image').value.trim(),
-        ingredients: ingredients,
-        steps: steps,
-        isAvailable: document.getElementById('dish-available').checked,
-      };
+      var fileInput = document.getElementById('dish-image-file');
+      if (fileInput.files && fileInput.files[0]) {
+        formData.append('image', fileInput.files[0]);
+      }
 
       var url = '/api/admin/dishes';
       var method = 'POST';
@@ -388,8 +442,7 @@
 
       fetch(url, {
         method: method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: formData,
       })
         .then(function(res) { return res.json(); })
         .then(function(result) {
@@ -413,8 +466,138 @@
         if (view === 'orders') loadOrders();
         else if (view === 'dishes') loadDishes();
         else if (view === 'categories') loadCategories();
+        else if (view === 'family') loadFamily();
+        else if (view === 'inventory') loadInventory();
+        else if (view === 'stats') loadStats();
       });
     });
+
+    // === 数据统计 ===
+    function loadStats() {
+      fetch('/api/admin/stats')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          document.getElementById('stat-order-count').textContent = data.orderCount || 0;
+          document.getElementById('stat-dish-count').textContent = data.dishCount || 0;
+          document.getElementById('stat-top-rated').textContent = data.topRated || '暂无';
+
+          var el = document.getElementById('stat-top-dishes');
+          var list = data.topDishes || [];
+          if (list.length === 0) {
+            el.innerHTML = '<div class=\"empty-msg\">本月还没有点餐记录</div>';
+          } else {
+            el.innerHTML = '';
+            list.forEach(function(item, idx) {
+              var row = document.createElement('div');
+              row.className = 'stat-dish-row';
+              var rankClass = idx === 0 ? 'stat-rank-gold' : idx === 1 ? 'stat-rank-silver' : idx === 2 ? 'stat-rank-bronze' : '';
+              row.innerHTML =
+                '<span class=\"stat-rank ' + rankClass + '\">' + (idx + 1) + '</span>' +
+                '<span class=\"stat-dish-name\">' + item.name + '</span>' +
+                '<span class=\"stat-dish-count\">' + item.count + ' 次</span>';
+              el.appendChild(row);
+            });
+          }
+        });
+    }
+
+    // === 库存管理 ===
+    function loadInventory() {
+      fetch('/api/inventory')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          var el = document.getElementById('inv-list');
+          var items = data.items || [];
+          if (items.length === 0) {
+            el.innerHTML = '<div class=\"empty-msg\">还没有库存记录，请添加食材</div>';
+          } else {
+            el.innerHTML = '';
+            items.forEach(function(item) {
+              var row = document.createElement('div');
+              row.className = 'inv-row';
+              row.innerHTML =
+                '<span class=\"inv-name\">' + item.ingredient_name + '</span>' +
+                '<input class=\"inv-qty-edit\" type=\"number\" value=\"' + item.quantity + '\" min=\"0\" step=\"0.1\" data-id=\"' + item.id + '\">' +
+                '<input class=\"inv-unit-edit\" value=\"' + item.unit + '\" data-id=\"' + item.id + '\">' +
+                '<button class=\"inv-save-btn\" data-id=\"' + item.id + '\">保存</button>' +
+                '<button class=\"inv-del-btn\" data-id=\"' + item.id + '\">删除</button>';
+              el.appendChild(row);
+            });
+            // 绑定保存
+            el.querySelectorAll('.inv-save-btn').forEach(function(btn) {
+              btn.addEventListener('click', function() {
+                var id = this.dataset.id;
+                var qty = el.querySelector('.inv-qty-edit[data-id=\"' + id + '\"]').value;
+                var unit = el.querySelector('.inv-unit-edit[data-id=\"' + id + '\"]').value;
+                fetch('/api/inventory/' + id, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ quantity: qty, unit: unit }),
+                }).then(function(r) { return r.json(); })
+                  .then(function(r) { if (r.success) loadInventory(); });
+              });
+            });
+            // 绑定删除
+            el.querySelectorAll('.inv-del-btn').forEach(function(btn) {
+              btn.addEventListener('click', function() {
+                if (!confirm('确定删除？')) return;
+                var id = this.dataset.id;
+                fetch('/api/inventory/' + id, { method: 'DELETE' })
+                  .then(function(r) { return r.json(); })
+                  .then(function(r) { if (r.success) loadInventory(); });
+              });
+            });
+          }
+        });
+    }
+
+    document.getElementById('inv-add-btn').addEventListener('click', function() {
+      var name = document.getElementById('inv-name').value.trim();
+      if (!name) return alert('请输入食材名');
+      var qty = document.getElementById('inv-qty').value;
+      var unit = document.getElementById('inv-unit').value.trim() || '份';
+      fetch('/api/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ingredient_name: name, quantity: qty, unit: unit }),
+      }).then(function(r) { return r.json(); })
+        .then(function(r) {
+          if (r.success) {
+            document.getElementById('inv-name').value = '';
+            document.getElementById('inv-qty').value = '0';
+            loadInventory();
+          }
+        });
+    });
+
+    // === 家庭管理 ===
+    var qrGenerated = false;
+
+    function loadFamily() {
+      document.getElementById('gen-qr-btn').addEventListener('click', function() {
+        if (qrGenerated) return;
+        qrGenerated = true;
+        var btn = this;
+        btn.textContent = '生成中…';
+        btn.disabled = true;
+
+        var inviteCode = '<%= user.phone %>';
+        var url = window.location.origin + '/register?invite=' + inviteCode;
+
+        var canvas = document.getElementById('qr-canvas');
+        QRCode.toCanvas(canvas, url, { width: 220, margin: 1, color: { dark: '#FF7F50', light: '#ffffff' } }, function(err) {
+          if (err) {
+            btn.textContent = '生成失败，点此重试';
+            btn.disabled = false;
+            qrGenerated = false;
+            return;
+          }
+          document.getElementById('qr-wrap').style.display = '';
+          document.getElementById('invite-code-text').textContent = inviteCode;
+          btn.textContent = '已生成';
+        });
+      });
+    }
 
     // 默认加载订单
     loadOrders();
