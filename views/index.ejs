@@ -328,89 +328,66 @@
       else { alert(msg || '网络错误'); }
     }
 
-    // ===== 单卡片状态迁移（无全量刷新） =====
+    // ===== 单卡片状态迁移（先插入新卡→再收缩旧卡，零 reflow） =====
     var _statusTarget = { accept: 'accepted', cook: 'cooking', complete: 'completed' };
 
     function chefOrderAction(orderId, action) {
-      var card = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
-      if (!card) return;
+      var oldCard = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
+      if (!oldCard) return;
 
-      // 立即同步触发退出动画
-      card.classList.add('animating-out');
-
-      // 动画结束后移除卡片
-      var onTransitionEnd = function() {
-        card.removeEventListener('transitionend', onTransitionEnd);
-        var fromList = card.closest('.chef-order-list');
-        card.remove();
-        if (fromList) ensureEmptyPlaceholder(fromList);
-      };
-      card.addEventListener('transitionend', onTransitionEnd);
-      // 兜底：200ms 后强制移除
-      var fallbackTimer = setTimeout(function() {
-        card.removeEventListener('transitionend', onTransitionEnd);
-        if (card.parentNode) {
-          var fl = card.closest('.chef-order-list');
-          card.remove();
-          if (fl) ensureEmptyPlaceholder(fl);
-        }
-      }, 220);
+      // 禁用旧卡片按钮，防止重复点击
+      oldCard.style.pointerEvents = 'none';
 
       // API 调用
       fetch('/api/family/orders/' + orderId + '/' + action, { method: 'PUT' })
         .then(function(r) { return r.json(); })
         .then(function(r) {
-          if (!r.success) { chefShowError(); return; }
-          // 获取新状态下的完整订单数据（用单条查询回显即可，这里用 families/orders 最新一条）
+          if (!r.success) { oldCard.style.pointerEvents = ''; chefShowError(); return; }
+
+          // 1. 先在目标列插入新卡片
           fetch('/api/family/orders?limit=50').then(function(r2) { return r2.json(); }).then(function(d2) {
             var updated = (d2.orders || []).find(function(o) { return String(o.id) === String(orderId); });
-            if (updated) {
-              var targetStatus = _statusTarget[action] || 'completed';
-              var listEl = getChefOrderList(targetStatus);
-              if (listEl) {
-                clearEmptyPlaceholder(listEl);
-                listEl.insertAdjacentHTML('beforeend', buildChefOrderCard(updated));
-                // 新卡片淡入
-                var newCard = listEl.lastElementChild;
-                if (newCard && newCard.classList.contains('chef-order-card')) {
-                  newCard.classList.add('animating-in');
-                  requestAnimationFrame(function() {
-                    requestAnimationFrame(function() { newCard.classList.add('show'); });
-                  });
-                }
+            if (!updated) return;
+
+            var targetList = getChefOrderList(_statusTarget[action] || 'completed');
+            if (targetList) {
+              clearEmptyPlaceholder(targetList);
+              targetList.insertAdjacentHTML('beforeend', buildChefOrderCard(updated));
+              var newCard = targetList.lastElementChild;
+              if (newCard && newCard.classList.contains('chef-order-card')) {
+                newCard.classList.add('animating-in');
+                requestAnimationFrame(function() {
+                  requestAnimationFrame(function() { newCard.classList.add('show'); });
+                });
               }
             }
+
+            // 2. 新卡片已就位，现在收缩旧卡片
+            var fromList = oldCard.closest('.chef-order-list');
+            oldCard.classList.add('animating-out');
+            var onEnd = function() {
+              oldCard.removeEventListener('transitionend', onEnd);
+              if (oldCard.parentNode) oldCard.remove();
+              if (fromList) ensureEmptyPlaceholder(fromList);
+            };
+            oldCard.addEventListener('transitionend', onEnd);
+            setTimeout(function() {
+              oldCard.removeEventListener('transitionend', onEnd);
+              if (oldCard.parentNode) { oldCard.remove(); if (fromList) ensureEmptyPlaceholder(fromList); }
+            }, 300);
           });
         })
-        .catch(function() { chefShowError(); });
-      clearTimeout(fallbackTimer);
+        .catch(function() { oldCard.style.pointerEvents = ''; chefShowError(); });
     }
 
     function chefReject(orderId) {
       var reason = prompt('拒单原因（可选）：');
       if (reason === null) return;
 
-      var card = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
-      if (!card) return;
+      var oldCard = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
+      if (!oldCard) return;
 
-      // 立即动画
-      card.classList.add('animating-out');
-
-      var onTransitionEnd = function() {
-        card.removeEventListener('transitionend', onTransitionEnd);
-        var fromList = card.closest('.chef-order-list');
-        card.remove();
-        if (fromList) ensureEmptyPlaceholder(fromList);
-      };
-      card.addEventListener('transitionend', onTransitionEnd);
-      var fallbackTimer = setTimeout(function() {
-        card.removeEventListener('transitionend', onTransitionEnd);
-        if (card.parentNode) {
-          var fl = card.closest('.chef-order-list');
-          card.remove();
-          if (fl) ensureEmptyPlaceholder(fl);
-        }
-      }, 220);
+      oldCard.style.pointerEvents = 'none';
 
       fetch('/api/family/orders/' + orderId + '/reject', {
         method: 'PUT',
@@ -418,27 +395,40 @@
         body: JSON.stringify({ reason: reason.trim() }),
       }).then(function(r) { return r.json(); })
         .then(function(r) {
-          if (!r.success) { chefShowError(); return; }
+          if (!r.success) { oldCard.style.pointerEvents = ''; chefShowError(); return; }
+
           fetch('/api/family/orders?limit=50').then(function(r2) { return r2.json(); }).then(function(d2) {
             var updated = (d2.orders || []).find(function(o) { return String(o.id) === String(orderId); });
-            if (updated) {
-              var listEl = getChefOrderList('rejected');
-              if (listEl) {
-                clearEmptyPlaceholder(listEl);
-                listEl.insertAdjacentHTML('beforeend', buildChefOrderCard(updated));
-                var newCard = listEl.lastElementChild;
-                if (newCard && newCard.classList.contains('chef-order-card')) {
-                  newCard.classList.add('animating-in');
-                  requestAnimationFrame(function() {
-                    requestAnimationFrame(function() { newCard.classList.add('show'); });
-                  });
-                }
+            if (!updated) return;
+
+            var targetList = getChefOrderList('rejected');
+            if (targetList) {
+              clearEmptyPlaceholder(targetList);
+              targetList.insertAdjacentHTML('beforeend', buildChefOrderCard(updated));
+              var newCard = targetList.lastElementChild;
+              if (newCard && newCard.classList.contains('chef-order-card')) {
+                newCard.classList.add('animating-in');
+                requestAnimationFrame(function() {
+                  requestAnimationFrame(function() { newCard.classList.add('show'); });
+                });
               }
             }
+
+            var fromList = oldCard.closest('.chef-order-list');
+            oldCard.classList.add('animating-out');
+            var onEnd = function() {
+              oldCard.removeEventListener('transitionend', onEnd);
+              if (oldCard.parentNode) oldCard.remove();
+              if (fromList) ensureEmptyPlaceholder(fromList);
+            };
+            oldCard.addEventListener('transitionend', onEnd);
+            setTimeout(function() {
+              oldCard.removeEventListener('transitionend', onEnd);
+              if (oldCard.parentNode) { oldCard.remove(); if (fromList) ensureEmptyPlaceholder(fromList); }
+            }, 300);
           });
         })
-        .catch(function() { chefShowError(); });
-      clearTimeout(fallbackTimer);
+        .catch(function() { oldCard.style.pointerEvents = ''; chefShowError(); });
     }
 
     // === 家庭设置：二维码 ===
