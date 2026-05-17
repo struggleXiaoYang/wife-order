@@ -230,65 +230,75 @@
       _chefSearchTimer = setTimeout(function() { chefLoadOrders(1); }, 400);
     }
 
+    // 状态列容器查找（5 列顺序固定：pending/accepted/cooking/completed/rejected）
+    var _statusKeys = ['pending', 'accepted', 'cooking', 'completed', 'rejected'];
+    function getChefOrderList(status) {
+      var idx = _statusKeys.indexOf(status);
+      if (idx < 0) return null;
+      var lists = document.querySelectorAll('#chef-orders-container .chef-order-list');
+      return lists[idx] || null;
+    }
+
+    // 去除列中空状态占位
+    function clearEmptyPlaceholder(listEl) {
+      var ph = listEl.querySelector('.chef-empty');
+      if (ph) ph.remove();
+    }
+
+    // 若列表无卡片，显示空状态
+    function ensureEmptyPlaceholder(listEl) {
+      if (listEl.children.length === 0) {
+        listEl.innerHTML = '<div class="chef-empty">还没有想吃的菜呢 🍳</div>';
+      }
+    }
+
+    // ===== 单卡片 HTML 构建 =====
+    function buildChefOrderCard(o) {
+      var time = o.createdAt ? o.createdAt.substring(0, 16).replace('T', ' ') : '';
+      var dishText = (o.dishNames || []).map(function(n, i) {
+        var s = escapeHtml(n);
+        if (o.remarks && o.remarks[i]) s += ' (' + escapeHtml(o.remarks[i]) + ')';
+        return s;
+      }).join('、');
+      var html = '<div class="chef-order-card" data-id="' + o.id + '">';
+      html += '<div class="chef-order-head"><span class="chef-order-time">' + time + '</span></div>';
+      html += '<div class="chef-order-body">' + dishText + '</div>';
+      if (o.status === 'rejected' && o.rejectReason) {
+        html += '<div class="chef-order-reason">原因：' + escapeHtml(o.rejectReason) + '</div>';
+      }
+      if (o.status === 'pending') {
+        html += '<div class="chef-order-btns"><button class="chef-btn-accept" onclick="chefOrderAction(\'' + o.id + '\',\'accept\')">接单</button><button class="chef-btn-reject" onclick="chefReject(\'' + o.id + '\')">拒单</button></div>';
+      } else if (o.status === 'accepted') {
+        html += '<div class="chef-order-btns"><button class="chef-btn-cook" onclick="chefOrderAction(\'' + o.id + '\',\'cook\')">开始烹饪</button></div>';
+      } else if (o.status === 'cooking') {
+        html += '<div class="chef-order-btns"><button class="chef-btn-done" onclick="chefOrderAction(\'' + o.id + '\',\'complete\')">完成</button></div>';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    // ===== 整体列表渲染（仅用于：首次加载、分页、搜索/筛选） =====
     function chefRenderOrders(orders) {
-      var STATUS_MAP = {
-        pending:   { label: '⏳ 待接单', cls: 'st-pending' },
-        accepted:  { label: '👌 已接单', cls: 'st-accepted' },
-        cooking:   { label: '🔥 烹饪中', cls: 'st-cooking' },
-        completed: { label: '✅ 已完成', cls: 'st-completed' },
-        rejected:  { label: '😭 已拒单', cls: 'st-rejected' },
-      };
-
-      // 当前订单 ID 集合（用于判断新卡片）
-      var currentIds = {};
-      orders.forEach(function(o) { currentIds[o.id] = true; });
-      var prevIds = window._prevOrderIds || {};
-
-      // 按状态分组
+      var html = '';
       var groups = { pending: [], accepted: [], cooking: [], completed: [], rejected: [] };
       orders.forEach(function(o) {
         if (groups[o.status]) groups[o.status].push(o);
       });
-
-      var html = '';
-      var keys = ['pending', 'accepted', 'cooking', 'completed', 'rejected'];
-      keys.forEach(function(key) {
-        var st = STATUS_MAP[key];
-        html += '<div class="chef-order-section"><h3 class="chef-section-title">' + st.label + '</h3>';
+      var STATUS_LABEL = {
+        pending: '⏳ 待接单', accepted: '👌 已接单', cooking: '🔥 烹饪中',
+        completed: '✅ 已完成', rejected: '😭 已拒单'
+      };
+      _statusKeys.forEach(function(key) {
+        html += '<div class="chef-order-section"><h3 class="chef-section-title">' + STATUS_LABEL[key] + '</h3>';
         html += '<div class="chef-order-list">';
         if (groups[key].length === 0) {
           html += '<div class="chef-empty">还没有想吃的菜呢 🍳</div>';
         } else {
-          groups[key].forEach(function(o) {
-            var isNew = !prevIds[o.id];
-            var animClass = isNew ? ' animating-in' : '';
-            var time = o.createdAt ? o.createdAt.substring(0, 16).replace('T', ' ') : '';
-            var dishText = (o.dishNames || []).map(function(n, i) {
-              var s = escapeHtml(n);
-              if (o.remarks && o.remarks[i]) s += ' (' + escapeHtml(o.remarks[i]) + ')';
-              return s;
-            }).join('、');
-            html += '<div class="chef-order-card' + animClass + '" data-id="' + o.id + '">';
-            html += '<div class="chef-order-head"><span class="chef-order-time">' + time + '</span></div>';
-            html += '<div class="chef-order-body">' + dishText + '</div>';
-            if (o.status === 'rejected' && o.rejectReason) {
-              html += '<div class="chef-order-reason">原因：' + escapeHtml(o.rejectReason) + '</div>';
-            }
-            if (o.status === 'pending') {
-              html += '<div class="chef-order-btns"><button class="chef-btn-accept" onclick="chefOrderAction(\'' + o.id + '\',\'accept\')">接单</button><button class="chef-btn-reject" onclick="chefReject(\'' + o.id + '\')">拒单</button></div>';
-            } else if (o.status === 'accepted') {
-              html += '<div class="chef-order-btns"><button class="chef-btn-cook" onclick="chefOrderAction(\'' + o.id + '\',\'cook\')">开始烹饪</button></div>';
-            } else if (o.status === 'cooking') {
-              html += '<div class="chef-order-btns"><button class="chef-btn-done" onclick="chefOrderAction(\'' + o.id + '\',\'complete\')">完成</button></div>';
-            }
-            html += '</div>';
-          });
+          groups[key].forEach(function(o) { html += buildChefOrderCard(o); });
         }
         html += '</div></div>';
       });
-
       document.getElementById('chef-orders-container').innerHTML = html;
-      window._prevOrderIds = currentIds;
     }
 
     function chefRenderOrderPagination(total, page, totalPages) {
@@ -318,32 +328,117 @@
       else { alert(msg || '网络错误'); }
     }
 
-    // === 订单操作（reload替换为刷新当前页） ===
+    // ===== 单卡片状态迁移（无全量刷新） =====
+    var _statusTarget = { accept: 'accepted', cook: 'cooking', complete: 'completed' };
+
     function chefOrderAction(orderId, action) {
-      // 动画：点击的卡片淡出
       var card = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
-      if (card) { card.classList.add('animating-out'); }
-      setTimeout(function() {
-        fetch('/api/family/orders/' + orderId + '/' + action, { method: 'PUT' })
-          .then(function(r) { return r.json(); })
-          .then(function(r) { if (r.success) chefLoadOrders(_chefOrderPage); })
-          .catch(function() { chefShowError(); });
-      }, 180);
+      if (!card) return;
+
+      // 立即同步触发退出动画
+      card.classList.add('animating-out');
+
+      // 动画结束后移除卡片
+      var onTransitionEnd = function() {
+        card.removeEventListener('transitionend', onTransitionEnd);
+        var fromList = card.closest('.chef-order-list');
+        card.remove();
+        if (fromList) ensureEmptyPlaceholder(fromList);
+      };
+      card.addEventListener('transitionend', onTransitionEnd);
+      // 兜底：200ms 后强制移除
+      var fallbackTimer = setTimeout(function() {
+        card.removeEventListener('transitionend', onTransitionEnd);
+        if (card.parentNode) {
+          var fl = card.closest('.chef-order-list');
+          card.remove();
+          if (fl) ensureEmptyPlaceholder(fl);
+        }
+      }, 220);
+
+      // API 调用
+      fetch('/api/family/orders/' + orderId + '/' + action, { method: 'PUT' })
+        .then(function(r) { return r.json(); })
+        .then(function(r) {
+          if (!r.success) { chefShowError(); return; }
+          // 获取新状态下的完整订单数据（用单条查询回显即可，这里用 families/orders 最新一条）
+          fetch('/api/family/orders?limit=50').then(function(r2) { return r2.json(); }).then(function(d2) {
+            var updated = (d2.orders || []).find(function(o) { return String(o.id) === String(orderId); });
+            if (updated) {
+              var targetStatus = _statusTarget[action] || 'completed';
+              var listEl = getChefOrderList(targetStatus);
+              if (listEl) {
+                clearEmptyPlaceholder(listEl);
+                listEl.insertAdjacentHTML('beforeend', buildChefOrderCard(updated));
+                // 新卡片淡入
+                var newCard = listEl.lastElementChild;
+                if (newCard && newCard.classList.contains('chef-order-card')) {
+                  newCard.classList.add('animating-in');
+                  requestAnimationFrame(function() {
+                    requestAnimationFrame(function() { newCard.classList.add('show'); });
+                  });
+                }
+              }
+            }
+          });
+        })
+        .catch(function() { chefShowError(); });
+      clearTimeout(fallbackTimer);
     }
+
     function chefReject(orderId) {
       var reason = prompt('拒单原因（可选）：');
       if (reason === null) return;
+
       var card = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
-      if (card) { card.classList.add('animating-out'); }
-      setTimeout(function() {
-        fetch('/api/family/orders/' + orderId + '/reject', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason: reason.trim() }),
-        }).then(function(r) { return r.json(); })
-          .then(function(r) { if (r.success) chefLoadOrders(_chefOrderPage); })
-          .catch(function() { chefShowError(); });
-      }, 180);
+      if (!card) return;
+
+      // 立即动画
+      card.classList.add('animating-out');
+
+      var onTransitionEnd = function() {
+        card.removeEventListener('transitionend', onTransitionEnd);
+        var fromList = card.closest('.chef-order-list');
+        card.remove();
+        if (fromList) ensureEmptyPlaceholder(fromList);
+      };
+      card.addEventListener('transitionend', onTransitionEnd);
+      var fallbackTimer = setTimeout(function() {
+        card.removeEventListener('transitionend', onTransitionEnd);
+        if (card.parentNode) {
+          var fl = card.closest('.chef-order-list');
+          card.remove();
+          if (fl) ensureEmptyPlaceholder(fl);
+        }
+      }, 220);
+
+      fetch('/api/family/orders/' + orderId + '/reject', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() }),
+      }).then(function(r) { return r.json(); })
+        .then(function(r) {
+          if (!r.success) { chefShowError(); return; }
+          fetch('/api/family/orders?limit=50').then(function(r2) { return r2.json(); }).then(function(d2) {
+            var updated = (d2.orders || []).find(function(o) { return String(o.id) === String(orderId); });
+            if (updated) {
+              var listEl = getChefOrderList('rejected');
+              if (listEl) {
+                clearEmptyPlaceholder(listEl);
+                listEl.insertAdjacentHTML('beforeend', buildChefOrderCard(updated));
+                var newCard = listEl.lastElementChild;
+                if (newCard && newCard.classList.contains('chef-order-card')) {
+                  newCard.classList.add('animating-in');
+                  requestAnimationFrame(function() {
+                    requestAnimationFrame(function() { newCard.classList.add('show'); });
+                  });
+                }
+              }
+            }
+          });
+        })
+        .catch(function() { chefShowError(); });
+      clearTimeout(fallbackTimer);
     }
 
     // === 家庭设置：二维码 ===
