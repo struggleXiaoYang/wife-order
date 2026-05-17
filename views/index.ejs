@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>老婆点菜</title>
   <link rel="stylesheet" href="/style.css">
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
   <%- include('partials/navbar') %>
@@ -1493,8 +1494,38 @@
       });
   }
 
-  // 每15秒轮询厨房状态
-  var _kitchenStatusTimer = setInterval(checkKitchenStatus, 15000);
+  // Socket.IO 实时推送（优先级高于轮询）
+  var _socketConnected = false;
+  try {
+    var socket = io();
+    socket.on('connect', function() {
+      _socketConnected = true;
+      // 加入家庭组房间
+      var fgId = '<%= locals.familyGroupId || "" %>';
+      if (fgId) socket.emit('join', fgId);
+    });
+    socket.on('order_update', function() {
+      // 订单状态变更 → 刷新状态条
+      checkKitchenStatus();
+      // 如果当前在历史页或大厨面板，刷新列表
+      if (typeof chefLoadOrders === 'function' && document.getElementById('panel-orders') && document.getElementById('panel-orders').style.display !== 'none') {
+        chefLoadOrders((typeof _chefOrderPage !== 'undefined') ? _chefOrderPage : 1);
+      }
+      if (typeof loadHistory === 'function' && document.getElementById('history-list')) {
+        loadHistory((typeof _currentPage !== 'undefined') ? _currentPage : 1);
+      }
+    });
+    socket.on('new_order', function() {
+      checkKitchenStatus();
+      if (typeof chefLoadOrders === 'function') chefLoadOrders(1);
+    });
+    socket.on('disconnect', function() { _socketConnected = false; });
+  } catch(e) { /* Socket.IO 不可用时静默降级 */ }
+
+  // 每15秒轮询厨房状态（Socket.IO 降级方案）
+  var _kitchenStatusTimer = setInterval(function() {
+    if (!_socketConnected) checkKitchenStatus();
+  }, 15000);
   window.addEventListener('beforeunload', function() { clearInterval(_kitchenStatusTimer); });
 
   function escapeHtml(str) {

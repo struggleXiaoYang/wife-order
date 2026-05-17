@@ -8,7 +8,13 @@ const { sendSms } = require('./services/smsService');
 const multer = require('multer');
 const crypto = require('crypto');
 
+const compression = require('compression');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const session = require('express-session');
+const cacheService = require('./services/cacheService');
+const http = require('http');
+const { Server } = require('socket.io');
 
 // 图片上传配置
 const upload = multer({
@@ -39,11 +45,41 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// 1. HTTP 压缩（第一个中间件，阈值 1KB）
+app.use(compression({ threshold: 1024 }));
+
+// 2. 安全响应头
+app.use(helmet({
+  contentSecurityPolicy: false, // EJS 内联样式较多，暂不开启 CSP
+}));
+app.disable('x-powered-by');
+
+// 3. 静态资源缓存
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '7d',
+  etag: true,
+  lastModified: true,
+  setHeaders: function(res, filePath) {
+    if (/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=2592000'); // 图片 30 天
+    } else if (/\.(html|ejs)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-cache'); // 模板不缓存
+    }
+  },
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// 4. API 限流
+var loginLimiter = rateLimit({ windowMs: 60000, max: 10, message: { error: '请求过于频繁，请稍后重试' } });
+var registerLimiter = rateLimit({ windowMs: 60000, max: 5, message: { error: '请求过于频繁，请稍后重试' } });
+var dashboardLimiter = rateLimit({ windowMs: 60000, max: 5, message: { error: '请求过于频繁，请稍后重试' } });
+var smsLimiter = rateLimit({ windowMs: 60000, max: 1, message: { success: false, message: '请求过于频繁，请稍后重试' } });
 // 会话安全：SECRET 必须由环境变量提供，不允许硬编码兜底
 if (!process.env.SESSION_SECRET) {
   console.error('致命错误：缺少 SESSION_SECRET 环境变量，服务拒绝启动');
@@ -97,7 +133,7 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 // ========== 发送短信验证码 ==========
-app.post('/api/sendSms', async (req, res) => {
+app.post('/api/sendSms', smsLimiter, async (req, res) => {
   try {
     const { phone } = req.body;
 
@@ -154,7 +190,7 @@ app.post('/api/sendSms', async (req, res) => {
 });
 
 // ========== 用户注册 ==========
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', registerLimiter, async (req, res) => {
   try {
     const { phone, password, code, role, inviteCode } = req.body;
     var userRole = (role === 'chef' || role === 'member') ? role : 'member';
@@ -286,7 +322,7 @@ app.post('/api/register', async (req, res) => {
 });
 
 // ========== 用户登录 ==========
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const { phone, password } = req.body;
 
@@ -338,62 +374,76 @@ app.get('/', async (req, res) => {
     return res.render('welcome');
   }
   try {
-    var scopeCol = req.scopeColumn || 'user_id';
-    var scopeVal = req.scopeValue || req.session.userId;
     const userRole = req.session.userRole || 'member';
 
-    // 从 DB 取最新 family_group_id（绑定后实时生效）
+    // 并行：取 family_group_id + scope 基础查询
     var [[fgUser]] = await pool.execute('SELECT family_group_id FROM users WHERE id = ?', [req.session.userId]);
     var familyGroupId = fgUser.family_group_id;
     if (familyGroupId) req.session.familyGroupId = familyGroupId;
-
     var scopeColumn = familyGroupId ? 'family_group_id' : 'user_id';
     var scopeValue = familyGroupId || req.session.userId;
 
-    // ---------- 菜品数据 ----------
-    const [rows] = await pool.execute(
-      `SELECT d.id, d.name, d.image, d.ingredients, d.steps, d.is_available, d.avg_rating,
-              COALESCE(c.name, '') AS category
-       FROM dishes d
-       LEFT JOIN categories c ON d.category_id = c.id
-       WHERE d.${scopeColumn} = ?
-       ORDER BY d.avg_rating DESC, d.id`,
-      [scopeValue]
-    );
+    // 并行：dishes + inventory + 家庭成员（互不依赖）
+    var parallelResults = await Promise.all([
+      pool.execute(
+        'SELECT d.id, d.name, d.image, d.ingredients, d.steps, d.is_available, d.avg_rating, COALESCE(c.name, \'\') AS category FROM dishes d LEFT JOIN categories c ON d.category_id = c.id WHERE d.' + scopeColumn + ' = ? ORDER BY d.avg_rating DESC, d.id',
+        [scopeValue]
+      ),
+      pool.execute(
+        'SELECT ingredient_name, quantity FROM inventory WHERE ' + scopeColumn + ' = ?',
+        [scopeValue]
+      ),
+      familyGroupId
+        ? Promise.all([
+            pool.execute('SELECT phone, role FROM users WHERE family_group_id = ? ORDER BY created_at', [familyGroupId]),
+            pool.execute('SELECT name FROM family_groups WHERE id = ?', [familyGroupId])
+          ])
+        : Promise.resolve([[[],[]], [[{},{}]]]) // 无家庭组时返回空结构
+    ]);
 
-    const [invRows] = await pool.execute(
-      `SELECT ingredient_name, quantity FROM inventory WHERE ${scopeColumn} = ?`,
-      [scopeValue]
-    );
+    var [rows] = parallelResults[0];
+    var [invRows] = parallelResults[1];
+    var famResult = parallelResults[2]; // [memberRows, fgRow]
+
     var stockMap = {};
     invRows.forEach(function(inv) { stockMap[inv.ingredient_name] = inv.quantity; });
 
-    const dishes = rows.map(function(r) {
-      var ingredients = [];
-      var steps = [];
+    var dishes = rows.map(function(r) {
+      var ingredients = [], steps = [];
       try { ingredients = JSON.parse(r.ingredients || '[]'); } catch (_) {}
       try { steps = JSON.parse(r.steps || '[]'); } catch (_) {}
       var isSoldOut = false;
       if (ingredients.length > 0 && Object.keys(stockMap).length > 0) {
         isSoldOut = ingredients.some(function(ing) { return stockMap.hasOwnProperty(ing) && stockMap[ing] <= 0; });
       }
-      return {
-        id: r.id, name: r.name, category: r.category, image: r.image || '',
-        ingredients: ingredients, steps: steps,
-        isAvailable: !!r.is_available && !isSoldOut, isSoldOut: isSoldOut,
-        avgRating: Number(r.avg_rating) || 0,
-      };
+      return { id: r.id, name: r.name, category: r.category, image: r.image || '', ingredients: ingredients, steps: steps, isAvailable: !!r.is_available && !isSoldOut, isSoldOut: isSoldOut, avgRating: Number(r.avg_rating) || 0 };
     });
 
-    // ---------- 大厨额外数据 ----------
+    // 家庭成员数据
+    var familyMembers = [];
+    var familyGroupName = '';
+    if (familyGroupId && famResult) {
+      var [memberRows] = famResult[0];
+      familyMembers = memberRows.map(function(r) { return { phone: r.phone, role: r.role }; });
+      var [[fgRow]] = famResult[1];
+      familyGroupName = fgRow ? fgRow.name : '';
+    }
+
+    // 大厨额外数据：并行 orders + dishCount + monthOrders + categories，然后串行 order_items
     var chefData = {};
     if (userRole === 'chef') {
-      var [orderRows] = await pool.execute(
-        `SELECT o.id, o.status, o.reject_reason, o.created_at
-         FROM orders o WHERE o.${scopeColumn} = ? AND o.deleted_at IS NULL
-         ORDER BY o.created_at DESC`,
-        [scopeValue]
-      );
+      var chefParallel = await Promise.all([
+        pool.execute('SELECT o.id, o.status, o.reject_reason, o.created_at FROM orders o WHERE o.' + scopeColumn + ' = ? AND o.deleted_at IS NULL ORDER BY o.created_at DESC', [scopeValue]),
+        pool.execute('SELECT COUNT(*) AS cnt FROM dishes WHERE ' + scopeColumn + ' = ?', [scopeValue]),
+        pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE ' + scopeColumn + ' = ? AND deleted_at IS NULL AND YEAR(created_at)=YEAR(NOW()) AND MONTH(created_at)=MONTH(NOW())', [scopeValue]),
+        pool.execute('SELECT name FROM categories WHERE ' + scopeColumn + ' = ? ORDER BY sort_order, id', [scopeValue])
+      ]);
+
+      var [orderRows] = chefParallel[0];
+      var [[{ cnt: dishCount }]] = chefParallel[1];
+      var [[{ cnt: monthOrders }]] = chefParallel[2];
+      var [catRows] = chefParallel[3];
+
       var orderIds = orderRows.map(function(o) { return o.id; });
       var itemsMap = {};
       if (orderIds.length > 0) {
@@ -401,52 +451,14 @@ app.get('/', async (req, res) => {
           'SELECT order_id, dish_name, remark FROM order_items WHERE order_id IN (' + orderIds.map(function() { return '?'; }).join(',') + ')',
           orderIds
         );
-        itemRows.forEach(function(it) {
-          if (!itemsMap[it.order_id]) itemsMap[it.order_id] = [];
-          itemsMap[it.order_id].push(it);
-        });
+        itemRows.forEach(function(it) { if (!itemsMap[it.order_id]) itemsMap[it.order_id] = []; itemsMap[it.order_id].push(it); });
       }
       var orders = orderRows.map(function(o) {
         var items = itemsMap[o.id] || [];
-        return {
-          id: o.id.toString(), status: o.status,
-          dishNames: items.map(function(i) { return i.dish_name; }),
-          remarks: items.map(function(i) { return i.remark || ''; }),
-          rejectReason: o.reject_reason || '',
-          createdAt: new Date(o.created_at).toISOString(),
-        };
+        return { id: o.id.toString(), status: o.status, dishNames: items.map(function(i) { return i.dish_name; }), remarks: items.map(function(i) { return i.remark || ''; }), rejectReason: o.reject_reason || '', createdAt: new Date(o.created_at).toISOString() };
       });
 
-      var [[{ cnt: dishCount }]] = await pool.execute(`SELECT COUNT(*) AS cnt FROM dishes WHERE ${scopeColumn} = ?`, [scopeValue]);
-      var [[{ cnt: monthOrders }]] = await pool.execute(
-        `SELECT COUNT(*) AS cnt FROM orders WHERE ${scopeColumn} = ? AND deleted_at IS NULL AND YEAR(created_at)=YEAR(NOW()) AND MONTH(created_at)=MONTH(NOW())`,
-        [scopeValue]
-      );
-
-      var [catRows] = await pool.execute(`SELECT name FROM categories WHERE ${scopeColumn} = ? ORDER BY sort_order, id`, [scopeValue]);
-
-      chefData = {
-        orders: orders,
-        dishCount: dishCount,
-        monthOrders: monthOrders,
-        categories: catRows.map(function(c) { return c.name; }),
-        dishes: dishes,
-      };
-    }
-
-    // 家庭成员（用于今日一屏问候）
-    var familyMembers = [];
-    var familyGroupName = '';
-    if (familyGroupId) {
-      var [memberRows] = await pool.execute(
-        'SELECT phone, role FROM users WHERE family_group_id = ? ORDER BY created_at',
-        [familyGroupId]
-      );
-      familyMembers = memberRows.map(function(r) {
-        return { phone: r.phone, role: r.role };
-      });
-      var [[fgRow]] = await pool.execute('SELECT name FROM family_groups WHERE id = ?', [familyGroupId]);
-      familyGroupName = fgRow ? fgRow.name : '';
+      chefData = { orders: orders, dishCount: dishCount, monthOrders: monthOrders, categories: catRows.map(function(c) { return c.name; }), dishes: dishes };
     }
 
     res.render('index', { dishes: dishes, chefData: chefData, familyMembers: familyMembers, familyGroupName: familyGroupName });
@@ -465,11 +477,18 @@ app.get('/api/menu', requireAuth, async (req, res) => {
     var [[fgUser]] = await pool.execute('SELECT family_group_id FROM users WHERE id = ?', [userId]);
     var scCol = fgUser.family_group_id ? 'family_group_id' : 'user_id';
     var scVal = fgUser.family_group_id || userId;
+    // 缓存：key 按 scope 区分
+    var cacheKey = 'menu_' + scVal;
+    var cached = cacheService.get(cacheKey);
+    if (cached) return res.json(cached);
+
     const [rows] = await pool.execute(
       `SELECT name FROM categories WHERE ${scCol} = ? ORDER BY sort_order, id`,
       [scVal]
     );
-    res.json({ categories: rows.map(function(r) { return r.name; }) });
+    var data = { categories: rows.map(function(r) { return r.name; }) };
+    cacheService.set(cacheKey, data, 30);
+    res.json(data);
   } catch (err) {
     console.error('GET /api/menu error:', err);
     res.status(500).json({ error: '服务器错误' });
@@ -601,6 +620,11 @@ app.post('/api/order', requireAuth, async (req, res) => {
         },
         shoppingList: shoppingList,
       });
+      // Socket.IO: 通知家庭组成员有新订单
+      if (familyGroupId) {
+        io.to('fg_' + familyGroupId).emit('new_order', { orderId: orderId.toString() });
+        invalidateCache(scopeValue);
+      }
     } catch (txErr) {
       await conn.rollback();
       throw txErr;
@@ -790,10 +814,10 @@ app.post('/api/dishes/:id/rate', requireAuth, async (req, res) => {
       [userId, dishId, orderId, score]
     );
 
-    // 更新菜品平均评分
+    // 更新菜品平均评分 + 评分计数（预计算，避免查询时实时 COUNT）
     await pool.execute(
-      'UPDATE dishes SET avg_rating = (SELECT ROUND(AVG(rating), 1) FROM ratings WHERE dish_id = ?) WHERE id = ?',
-      [dishId, dishId]
+      'UPDATE dishes SET avg_rating = (SELECT ROUND(AVG(rating), 1) FROM ratings WHERE dish_id = ?), rating_count = (SELECT COUNT(*) FROM ratings WHERE dish_id = ?) WHERE id = ?',
+      [dishId, dishId, dishId]
     );
 
     res.json({ success: true, message: '评分成功' });
@@ -1351,6 +1375,10 @@ app.put('/api/family/orders/:id/accept', requireAuth, async (req, res) => {
       ['accepted', req.params.id, scopeVal]
     );
     if (result.affectedRows === 0) return res.status(404).json({ error: '订单不存在' });
+    invalidateCache(scopeVal);
+    // Socket.IO: 通知家庭组成员订单状态变化
+    var fgId = req.session.familyGroupId;
+    if (fgId) io.to('fg_' + fgId).emit('order_update', { orderId: String(req.params.id) });
     res.json({ success: true });
   } catch (err) {
     console.error('PUT /api/family/orders/:id/accept error:', err);
@@ -1368,6 +1396,10 @@ app.put('/api/family/orders/:id/reject', requireAuth, async (req, res) => {
       ['rejected', req.body.reason || '', req.params.id, scopeVal]
     );
     if (result.affectedRows === 0) return res.status(404).json({ error: '订单不存在' });
+    invalidateCache(scopeVal);
+    // Socket.IO: 通知家庭组成员订单状态变化
+    var fgId = req.session.familyGroupId;
+    if (fgId) io.to('fg_' + fgId).emit('order_update', { orderId: String(req.params.id) });
     res.json({ success: true });
   } catch (err) {
     console.error('PUT /api/family/orders/:id/reject error:', err);
@@ -1385,6 +1417,10 @@ app.put('/api/family/orders/:id/cook', requireAuth, async (req, res) => {
       ['cooking', req.params.id, scopeVal]
     );
     if (result.affectedRows === 0) return res.status(404).json({ error: '订单不存在' });
+    invalidateCache(scopeVal);
+    // Socket.IO: 通知家庭组成员订单状态变化
+    var fgId = req.session.familyGroupId;
+    if (fgId) io.to('fg_' + fgId).emit('order_update', { orderId: String(req.params.id) });
     res.json({ success: true });
   } catch (err) {
     console.error('PUT /api/family/orders/:id/cook error:', err);
@@ -1402,6 +1438,10 @@ app.put('/api/family/orders/:id/complete', requireAuth, async (req, res) => {
       ['completed', req.params.id, scopeVal]
     );
     if (result.affectedRows === 0) return res.status(404).json({ error: '订单不存在' });
+    invalidateCache(scopeVal);
+    // Socket.IO: 通知家庭组成员订单状态变化
+    var fgId = req.session.familyGroupId;
+    if (fgId) io.to('fg_' + fgId).emit('order_update', { orderId: String(req.params.id) });
     res.json({ success: true });
   } catch (err) {
     console.error('PUT /api/family/orders/:id/complete error:', err);
@@ -1433,48 +1473,36 @@ app.get('/api/family/stats', requireAuth, async (req, res) => {
     var scopeCol = req.scopeColumn || 'user_id';
     var scopeVal = req.scopeValue || req.session.userId;
 
-    // 本月订单数
-    const [[{ cnt: orderCount }]] = await pool.execute(
-      `SELECT COUNT(*) AS cnt FROM orders WHERE ${scopeCol} = ? AND deleted_at IS NULL AND YEAR(created_at) = YEAR(NOW()) AND MONTH(created_at) = MONTH(NOW())`,
-      [scopeVal]
-    );
+    var cacheKey = 'family_stats_' + scopeVal;
+    var cached = cacheService.get(cacheKey);
+    if (cached) return res.json(cached);
 
-    // 菜品总数
-    const [[{ cnt: dishCount }]] = await pool.execute(
-      `SELECT COUNT(*) AS cnt FROM dishes WHERE ${scopeCol} = ?`,
-      [scopeVal]
-    );
+    // 并行：4 个独立查询同时执行
+    var parallelResults = await Promise.all([
+      pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE ' + scopeCol + ' = ? AND deleted_at IS NULL AND YEAR(created_at) = YEAR(NOW()) AND MONTH(created_at) = MONTH(NOW())', [scopeVal]),
+      pool.execute('SELECT COUNT(*) AS cnt FROM dishes WHERE ' + scopeCol + ' = ?', [scopeVal]),
+      pool.execute('SELECT name, avg_rating FROM dishes WHERE ' + scopeCol + ' = ? AND avg_rating > 0 ORDER BY avg_rating DESC LIMIT 1', [scopeVal]),
+      pool.execute('SELECT d.name, COUNT(oi.id) AS cnt FROM order_items oi JOIN orders o ON oi.order_id = o.id JOIN dishes d ON oi.dish_id = d.id WHERE o.' + scopeCol + ' = ? AND o.deleted_at IS NULL AND YEAR(o.created_at) = YEAR(NOW()) AND MONTH(o.created_at) = MONTH(NOW()) GROUP BY d.id, d.name ORDER BY cnt DESC LIMIT 5', [scopeVal])
+    ]);
 
-    // 最高评分菜品
-    const [topRatedRows] = await pool.execute(
-      `SELECT name, avg_rating FROM dishes WHERE ${scopeCol} = ? AND avg_rating > 0 ORDER BY avg_rating DESC LIMIT 1`,
-      [scopeVal]
-    );
+    var [[{ cnt: orderCount }]] = parallelResults[0];
+    var [[{ cnt: dishCount }]] = parallelResults[1];
+    var [topRatedRows] = parallelResults[2];
+    var [topDishes] = parallelResults[3];
+
     var topRated = '暂无';
     if (topRatedRows.length > 0) {
       topRated = topRatedRows[0].name + ' ⭐' + Number(topRatedRows[0].avg_rating).toFixed(1);
     }
 
-    // 本月热门 Top 5
-    const [topDishes] = await pool.execute(
-      `SELECT d.name, COUNT(oi.id) AS cnt
-       FROM order_items oi
-       JOIN orders o ON oi.order_id = o.id
-       JOIN dishes d ON oi.dish_id = d.id
-       WHERE o.${scopeCol} = ? AND o.deleted_at IS NULL
-         AND YEAR(o.created_at) = YEAR(NOW()) AND MONTH(o.created_at) = MONTH(NOW())
-       GROUP BY d.id, d.name
-       ORDER BY cnt DESC
-       LIMIT 5`,
-      [scopeVal]
-    );
-
-    res.json({
+    var data = {
       orderCount: orderCount,
       dishCount: dishCount,
       topRated: topRated,
       topDishes: topDishes.map(function(r) { return { name: r.name, count: r.cnt }; }),
-    });
+    };
+    cacheService.set(cacheKey, data, 15);
+    res.json(data);
   } catch (err) {
     console.error('GET /api/family/stats error:', err);
     res.status(500).json({ error: '服务器错误' });
@@ -1560,6 +1588,7 @@ app.post('/api/family/dishes', requireAuth, upload.single('image'), async (req, 
       [req.body.name || '', categoryId, imageVal, JSON.stringify(ingredients || []), JSON.stringify(steps || []), isAvailable ? 1 : 0, userId]
     );
 
+    invalidateCache(scopeVal);
     res.json({
       success: true,
       dish: {
@@ -1634,6 +1663,7 @@ app.put('/api/family/dishes/:id', requireAuth, upload.single('image'), async (re
     );
 
     if (result.affectedRows === 0) return res.status(404).json({ error: '菜品不存在' });
+    invalidateCache(scopeVal);
     res.json({ success: true });
   } catch (err) {
     console.error('PUT /api/family/dishes/:id error:', err);
@@ -1650,6 +1680,7 @@ app.delete('/api/family/dishes/:id', requireAuth, async (req, res) => {
       [req.params.id, scopeVal]
     );
     if (result.affectedRows === 0) return res.status(404).json({ error: '菜品不存在' });
+    invalidateCache(scopeVal);
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /api/family/dishes/:id error:', err);
@@ -1765,9 +1796,33 @@ app.delete('/api/family/categories/:name', requireAuth, async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+var server = http.createServer(app);
+var io = new Server(server);
+
+// Socket.IO — 按 family_group_id 分配房间
+io.on('connection', function(socket) {
+  socket.on('join', function(familyGroupId) {
+    if (familyGroupId) socket.join('fg_' + familyGroupId);
+  });
+});
+
+// 缓存失效辅助：写入菜品/分类/订单时清除相关缓存
+function invalidateCache(scopeVal) {
+  cacheService.del('dash_stats');
+  if (scopeVal) {
+    cacheService.del('menu_' + scopeVal);
+    cacheService.del('family_stats_' + scopeVal);
+  } else {
+    cacheService.flush();
+  }
+}
+
+server.listen(PORT, () => {
   console.log('http://localhost:' + PORT);
 });
+
+// 导出供路由使用
+app.set('io', io);
 
 // ========== 超级管理员后台 ==========
 function requireDashboard(req, res, next) {
@@ -1781,7 +1836,7 @@ app.get('/dashboard/login', function(req, res) {
   res.render('dashboard', { loggedIn: false, error: '' });
 });
 
-app.post('/dashboard/login', function(req, res) {
+app.post('/dashboard/login', dashboardLimiter, function(req, res) {
   var user = process.env.DASHBOARD_USER || 'admin';
   var pass = process.env.DASHBOARD_PASS || 'admin888';
   if (req.body.username === user && req.body.password === pass) {
@@ -1809,28 +1864,30 @@ app.get('/dashboard', requireDashboard, function(req, res) {
 
 app.get('/api/dashboard/stats', requireDashboard, async function(req, res) {
   try {
-    var [[{ cnt: userCount }]] = await pool.execute('SELECT COUNT(*) AS cnt FROM users');
-    var [[{ cnt: familyCount }]] = await pool.execute('SELECT COUNT(*) AS cnt FROM family_groups');
-    var [[{ cnt: todayOrders }]] = await pool.execute(
-      'SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NULL AND DATE(created_at) = CURDATE()'
-    );
-    var [[{ cnt: activeFamilyGroups }]] = await pool.execute(
-      'SELECT COUNT(DISTINCT family_group_id) AS cnt FROM orders WHERE deleted_at IS NULL AND family_group_id IS NOT NULL AND created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)'
-    );
-    var [[{ cnt: newUsersToday }]] = await pool.execute(
-      'SELECT COUNT(*) AS cnt FROM users WHERE DATE(created_at) = CURDATE()'
-    );
-    var [[{ cnt: cookingOrders }]] = await pool.execute(
-      'SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NULL AND status = ?', ['cooking']
-    );
-    var [[{ cnt: completedOrdersToday }]] = await pool.execute(
-      'SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NULL AND status = ? AND DATE(created_at) = CURDATE()', ['completed']
-    );
+    var cached = cacheService.get('dash_stats');
+    if (cached) return res.json(cached);
+
+    // 并行：7 个独立 COUNT 查询
+    var [results] = await Promise.all([
+      pool.execute('SELECT COUNT(*) AS cnt FROM users'),
+      pool.execute('SELECT COUNT(*) AS cnt FROM family_groups'),
+      pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NULL AND DATE(created_at) = CURDATE()'),
+      pool.execute('SELECT COUNT(DISTINCT family_group_id) AS cnt FROM orders WHERE deleted_at IS NULL AND family_group_id IS NOT NULL AND created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)'),
+      pool.execute('SELECT COUNT(*) AS cnt FROM users WHERE DATE(created_at) = CURDATE()'),
+      pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NULL AND status = ?', ['cooking']),
+      pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NULL AND status = ? AND DATE(created_at) = CURDATE()', ['completed']),
+    ]);
+    var [[{ cnt: userCount }]] = results[0];
+    var [[{ cnt: familyCount }]] = results[1];
+    var [[{ cnt: todayOrders }]] = results[2];
+    var [[{ cnt: activeFamilyGroups }]] = results[3];
+    var [[{ cnt: newUsersToday }]] = results[4];
+    var [[{ cnt: cookingOrders }]] = results[5];
+    var [[{ cnt: completedOrdersToday }]] = results[6];
     var completionRate = todayOrders > 0 ? Math.round(completedOrdersToday / todayOrders * 1000) / 10 : 0;
-    res.json({
-      userCount, familyCount, todayOrders, activeFamilyGroups,
-      newUsersToday, cookingOrders, completedOrdersToday, completionRate,
-    });
+    var data = { userCount, familyCount, todayOrders, activeFamilyGroups, newUsersToday, cookingOrders, completedOrdersToday, completionRate };
+    cacheService.set('dash_stats', data, 15);
+    res.json(data);
   } catch (err) {
     res.status(500).json({ error: '服务器错误' });
   }
