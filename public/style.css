@@ -1174,41 +1174,20 @@ body::before {
   box-shadow: var(--shadow-hover);
 }
 
-/* 订单卡片切换动画 — 高度自然收缩，避免 layout reflow */
+/* ===== Instant Morph — 极轻状态切换 ===== */
 .chef-order-card {
   max-height: 400px;
   overflow: visible;
-  will-change: auto;
+  min-height: 74px;
 }
-.chef-order-card.animating-out {
-  max-height: 0;
-  margin-top: 0;
-  margin-bottom: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  opacity: 0;
-  overflow: hidden;
-  pointer-events: none;
-  transition: max-height 0.25s ease, margin 0.25s ease, padding 0.25s ease, opacity 0.2s ease;
-}
+/* 旧动画类保留空定义防报错，不再使用 */
+.chef-order-card.animating-out,
+.chef-order-card.animating-in,
+.chef-order-card.animating-in.show {}
 
-/* 新卡片淡入 */
-.chef-order-card.animating-in {
-  opacity: 0;
-  transform: translateY(8px);
-}
-.chef-order-card.animating-in.show {
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-
-/* 列 + 卡片最小高度防塌陷 */
+/* 列最小高度防塌陷 */
 .chef-order-list {
   min-height: 80px;
-}
-.chef-order-card {
-  min-height: 74px;
 }
 
 .chef-order-head {

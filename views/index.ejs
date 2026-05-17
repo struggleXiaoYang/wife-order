@@ -328,66 +328,97 @@
       else { alert(msg || '网络错误'); }
     }
 
-    // ===== 单卡片状态迁移（先插入新卡→再收缩旧卡，零 reflow） =====
-    var _statusTarget = { accept: 'accepted', cook: 'cooking', complete: 'completed' };
+    // ===== 真正 DOM 节点迁移（不重新创建 HTML，只移动+更新按钮） =====
+
+    // 根据状态更新卡片按钮区域
+    function updateCardButtons(card, status, orderId) {
+      var btnsEl = card.querySelector('.chef-order-btns');
+      if (!btnsEl) {
+        // 没有按钮区则创建一个
+        btnsEl = document.createElement('div');
+        btnsEl.className = 'chef-order-btns';
+        card.appendChild(btnsEl);
+      }
+      if (status === 'pending') {
+        btnsEl.innerHTML = '<button class="chef-btn-accept" onclick="chefOrderAction(\'' + orderId + '\',\'accept\')">接单</button><button class="chef-btn-reject" onclick="chefReject(\'' + orderId + '\')">拒单</button>';
+      } else if (status === 'accepted') {
+        btnsEl.innerHTML = '<button class="chef-btn-cook" onclick="chefOrderAction(\'' + orderId + '\',\'cook\')">开始烹饪</button>';
+      } else if (status === 'cooking') {
+        btnsEl.innerHTML = '<button class="chef-btn-done" onclick="chefOrderAction(\'' + orderId + '\',\'complete\')">完成</button>';
+      } else {
+        // completed / rejected — 没有操作按钮
+        if (btnsEl) btnsEl.remove();
+      }
+    }
+
+    // 移除拒单原因行（迁移到非 rejected 状态时）
+    function removeRejectReason(card) {
+      var el = card.querySelector('.chef-order-reason');
+      if (el) el.remove();
+    }
+
+    // ===== Instant Morph — 即时状态接管（零感知动画） =====
+    function landCard(card, targetList, fromList, orderId, targetStatus, isReject, rejectReason) {
+      // 1. 移动节点到目标列（秒完成，无动画）
+      clearEmptyPlaceholder(targetList);
+      targetList.appendChild(card);
+
+      // 2. 更新按钮 + 拒单原因
+      if (isReject) {
+        var btns = card.querySelector('.chef-order-btns');
+        if (btns) btns.remove();
+        if (rejectReason) {
+          var reasonEl = card.querySelector('.chef-order-reason');
+          if (!reasonEl) { reasonEl = document.createElement('div'); reasonEl.className = 'chef-order-reason'; card.appendChild(reasonEl); }
+          reasonEl.textContent = '原因：' + rejectReason;
+        }
+      } else {
+        updateCardButtons(card, targetStatus, orderId);
+        removeRejectReason(card);
+      }
+
+      // 3. 极轻脉冲：瞬间 opacity 0→1，100ms 完成，几乎不可见
+      card.style.opacity = '0';
+      card.style.transform = 'scale(0.99)';
+      card.style.transition = 'opacity 0.1s ease, transform 0.1s ease';
+      card.style.willChange = 'opacity, transform';
+      requestAnimationFrame(function() {
+        card.style.opacity = '';
+        card.style.transform = '';
+      });
+
+      // 4. 交互恢复 + 清理原列
+      card.style.pointerEvents = '';
+      if (fromList) ensureEmptyPlaceholder(fromList);
+    }
 
     function chefOrderAction(orderId, action) {
-      var oldCard = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
-      if (!oldCard) return;
+      var card = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
+      if (!card) return;
+      card.style.pointerEvents = 'none';
 
-      // 禁用旧卡片按钮，防止重复点击
-      oldCard.style.pointerEvents = 'none';
+      var targetStatus = { accept: 'accepted', cook: 'cooking', complete: 'completed' }[action];
+      if (!targetStatus) { card.style.pointerEvents = ''; return; }
 
-      // API 调用
       fetch('/api/family/orders/' + orderId + '/' + action, { method: 'PUT' })
         .then(function(r) { return r.json(); })
         .then(function(r) {
-          if (!r.success) { oldCard.style.pointerEvents = ''; chefShowError(); return; }
-
-          // 1. 先在目标列插入新卡片
-          fetch('/api/family/orders?limit=50').then(function(r2) { return r2.json(); }).then(function(d2) {
-            var updated = (d2.orders || []).find(function(o) { return String(o.id) === String(orderId); });
-            if (!updated) return;
-
-            var targetList = getChefOrderList(_statusTarget[action] || 'completed');
-            if (targetList) {
-              clearEmptyPlaceholder(targetList);
-              targetList.insertAdjacentHTML('beforeend', buildChefOrderCard(updated));
-              var newCard = targetList.lastElementChild;
-              if (newCard && newCard.classList.contains('chef-order-card')) {
-                newCard.classList.add('animating-in');
-                requestAnimationFrame(function() {
-                  requestAnimationFrame(function() { newCard.classList.add('show'); });
-                });
-              }
-            }
-
-            // 2. 新卡片已就位，现在收缩旧卡片
-            var fromList = oldCard.closest('.chef-order-list');
-            oldCard.classList.add('animating-out');
-            var onEnd = function() {
-              oldCard.removeEventListener('transitionend', onEnd);
-              if (oldCard.parentNode) oldCard.remove();
-              if (fromList) ensureEmptyPlaceholder(fromList);
-            };
-            oldCard.addEventListener('transitionend', onEnd);
-            setTimeout(function() {
-              oldCard.removeEventListener('transitionend', onEnd);
-              if (oldCard.parentNode) { oldCard.remove(); if (fromList) ensureEmptyPlaceholder(fromList); }
-            }, 300);
-          });
+          if (!r.success) { card.style.pointerEvents = ''; chefShowError(); return; }
+          var targetList = getChefOrderList(targetStatus);
+          if (!targetList) { card.style.pointerEvents = ''; return; }
+          var fromList = card.closest('.chef-order-list');
+          landCard(card, targetList, fromList, orderId, targetStatus, false, '');
         })
-        .catch(function() { oldCard.style.pointerEvents = ''; chefShowError(); });
+        .catch(function() { card.style.pointerEvents = ''; chefShowError(); });
     }
 
     function chefReject(orderId) {
       var reason = prompt('拒单原因（可选）：');
       if (reason === null) return;
 
-      var oldCard = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
-      if (!oldCard) return;
-
-      oldCard.style.pointerEvents = 'none';
+      var card = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
+      if (!card) return;
+      card.style.pointerEvents = 'none';
 
       fetch('/api/family/orders/' + orderId + '/reject', {
         method: 'PUT',
@@ -395,40 +426,13 @@
         body: JSON.stringify({ reason: reason.trim() }),
       }).then(function(r) { return r.json(); })
         .then(function(r) {
-          if (!r.success) { oldCard.style.pointerEvents = ''; chefShowError(); return; }
-
-          fetch('/api/family/orders?limit=50').then(function(r2) { return r2.json(); }).then(function(d2) {
-            var updated = (d2.orders || []).find(function(o) { return String(o.id) === String(orderId); });
-            if (!updated) return;
-
-            var targetList = getChefOrderList('rejected');
-            if (targetList) {
-              clearEmptyPlaceholder(targetList);
-              targetList.insertAdjacentHTML('beforeend', buildChefOrderCard(updated));
-              var newCard = targetList.lastElementChild;
-              if (newCard && newCard.classList.contains('chef-order-card')) {
-                newCard.classList.add('animating-in');
-                requestAnimationFrame(function() {
-                  requestAnimationFrame(function() { newCard.classList.add('show'); });
-                });
-              }
-            }
-
-            var fromList = oldCard.closest('.chef-order-list');
-            oldCard.classList.add('animating-out');
-            var onEnd = function() {
-              oldCard.removeEventListener('transitionend', onEnd);
-              if (oldCard.parentNode) oldCard.remove();
-              if (fromList) ensureEmptyPlaceholder(fromList);
-            };
-            oldCard.addEventListener('transitionend', onEnd);
-            setTimeout(function() {
-              oldCard.removeEventListener('transitionend', onEnd);
-              if (oldCard.parentNode) { oldCard.remove(); if (fromList) ensureEmptyPlaceholder(fromList); }
-            }, 300);
-          });
+          if (!r.success) { card.style.pointerEvents = ''; chefShowError(); return; }
+          var targetList = getChefOrderList('rejected');
+          if (!targetList) { card.style.pointerEvents = ''; return; }
+          var fromList = card.closest('.chef-order-list');
+          landCard(card, targetList, fromList, orderId, 'rejected', true, reason.trim());
         })
-        .catch(function() { oldCard.style.pointerEvents = ''; chefShowError(); });
+        .catch(function() { card.style.pointerEvents = ''; chefShowError(); });
     }
 
     // === 家庭设置：二维码 ===
