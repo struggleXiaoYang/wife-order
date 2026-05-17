@@ -239,6 +239,11 @@
         rejected:  { label: '😭 已拒单', cls: 'st-rejected' },
       };
 
+      // 当前订单 ID 集合（用于判断新卡片）
+      var currentIds = {};
+      orders.forEach(function(o) { currentIds[o.id] = true; });
+      var prevIds = window._prevOrderIds || {};
+
       // 按状态分组
       var groups = { pending: [], accepted: [], cooking: [], completed: [], rejected: [] };
       orders.forEach(function(o) {
@@ -255,13 +260,15 @@
           html += '<div class="chef-empty">还没有想吃的菜呢 🍳</div>';
         } else {
           groups[key].forEach(function(o) {
+            var isNew = !prevIds[o.id];
+            var animClass = isNew ? ' animating-in' : '';
             var time = o.createdAt ? o.createdAt.substring(0, 16).replace('T', ' ') : '';
             var dishText = (o.dishNames || []).map(function(n, i) {
               var s = escapeHtml(n);
               if (o.remarks && o.remarks[i]) s += ' (' + escapeHtml(o.remarks[i]) + ')';
               return s;
             }).join('、');
-            html += '<div class="chef-order-card">';
+            html += '<div class="chef-order-card' + animClass + '" data-id="' + o.id + '">';
             html += '<div class="chef-order-head"><span class="chef-order-time">' + time + '</span></div>';
             html += '<div class="chef-order-body">' + dishText + '</div>';
             if (o.status === 'rejected' && o.rejectReason) {
@@ -281,6 +288,7 @@
       });
 
       document.getElementById('chef-orders-container').innerHTML = html;
+      window._prevOrderIds = currentIds;
     }
 
     function chefRenderOrderPagination(total, page, totalPages) {
@@ -312,21 +320,30 @@
 
     // === 订单操作（reload替换为刷新当前页） ===
     function chefOrderAction(orderId, action) {
-      fetch('/api/family/orders/' + orderId + '/' + action, { method: 'PUT' })
-        .then(function(r) { return r.json(); })
-        .then(function(r) { if (r.success) chefLoadOrders(_chefOrderPage); })
-        .catch(function() { chefShowError(); });
+      // 动画：点击的卡片淡出
+      var card = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
+      if (card) { card.classList.add('animating-out'); }
+      setTimeout(function() {
+        fetch('/api/family/orders/' + orderId + '/' + action, { method: 'PUT' })
+          .then(function(r) { return r.json(); })
+          .then(function(r) { if (r.success) chefLoadOrders(_chefOrderPage); })
+          .catch(function() { chefShowError(); });
+      }, 180);
     }
     function chefReject(orderId) {
       var reason = prompt('拒单原因（可选）：');
       if (reason === null) return;
-      fetch('/api/family/orders/' + orderId + '/reject', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: reason.trim() }),
-      }).then(function(r) { return r.json(); })
-        .then(function(r) { if (r.success) chefLoadOrders(_chefOrderPage); })
-        .catch(function() { chefShowError(); });
+      var card = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
+      if (card) { card.classList.add('animating-out'); }
+      setTimeout(function() {
+        fetch('/api/family/orders/' + orderId + '/reject', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: reason.trim() }),
+        }).then(function(r) { return r.json(); })
+          .then(function(r) { if (r.success) chefLoadOrders(_chefOrderPage); })
+          .catch(function() { chefShowError(); });
+      }, 180);
     }
 
     // === 家庭设置：二维码 ===
@@ -1501,7 +1518,7 @@
     socket.on('connect', function() {
       _socketConnected = true;
       // 加入家庭组房间
-      var fgId = '<%= locals.familyGroupId || "" %>';
+      var fgId = '<%= (locals.user && locals.user.familyGroupId) || "" %>';
       if (fgId) socket.emit('join', fgId);
     });
     socket.on('order_update', function() {
