@@ -187,6 +187,8 @@
         if (btn.dataset.panel === 'stats') chefLoadTopDishes();
       });
     });
+    // 页面初始加载时，默认激活的订单看板需要主动拉取数据
+    chefLoadOrders(1);
 
     // === 订单看板：动态加载 ===
     var _chefOrderPage = 1;
