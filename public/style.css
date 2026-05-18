@@ -1255,6 +1255,14 @@ body::before {
 .chef-btn-done {
   flex: 1; padding: 7px 0; border: none; background: var(--success); color: var(--card-solid); border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer;
 }
+/* 快速归档按钮 */
+.chef-btn-archive {
+  flex: 1; padding: 6px 0; border: 1px solid var(--border);
+  background: transparent; color: var(--text-muted);
+  border-radius: 10px; font-size: 12px; cursor: pointer;
+  transition: all 0.15s ease;
+}
+.chef-btn-archive:hover { border-color: var(--accent); color: var(--accent); }
 
 /* 菜品管理（大厨版内嵌） */
 .chef-dish-toolbar { margin-bottom: 12px; }

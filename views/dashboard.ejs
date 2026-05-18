@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>家庭私厨 · 管理后台</title>
-  <link rel="stylesheet" href="/dashboard.css">
+  <link rel="stylesheet" href="/dashboard.css?v=2">
 </head>
 <body class="dashboard-page">
 
@@ -109,6 +109,16 @@
               <div class="stat-card-label">活跃家庭组</div>
               <div class="stat-card-value" id="stat-active-families">-</div>
               <div class="stat-card-sub">本周有订单</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-label">活跃订单</div>
+              <div class="stat-card-value" id="stat-active-orders">-</div>
+              <div class="stat-card-sub">看板可见</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-label">已归档订单</div>
+              <div class="stat-card-value" id="stat-archived">-</div>
+              <div class="stat-card-sub">历史保存</div>
             </div>
           </div>
 
@@ -280,18 +290,15 @@
         </div>
 
         <!-- ====== 订单记录 Tab ====== -->
+        <!-- ====== 订单记录 Tab (生命周期管理) ====== -->
         <div class="dashboard-tab" id="tab-orders">
-          <div class="toolbar">
-            <div class="toolbar-filter">
-              <select id="order-status-filter" onchange="loadOrderPage(1)">
-                <option value="">全部状态</option>
-                <option value="pending">待接单</option>
-                <option value="accepted">已接单</option>
-                <option value="cooking">烹饪中</option>
-                <option value="completed">已完成</option>
-                <option value="rejected">已拒单</option>
-              </select>
-            </div>
+          <!-- 子 Tab 切换 -->
+          <div class="toolbar" style="margin-bottom:12px;">
+            <button class="btn btn-sm lifecycle-tab active" data-lc="active" onclick="switchLifecycle('active')">活跃订单</button>
+            <button class="btn btn-sm btn-outline lifecycle-tab" data-lc="archived" onclick="switchLifecycle('archived')">已归档</button>
+            <button class="btn btn-sm btn-outline lifecycle-tab" data-lc="deleted" onclick="switchLifecycle('deleted')">已软删除</button>
+            <span style="flex:1;"></span>
+            <button class="btn btn-sm btn-outline" id="lc-batch-btn" style="display:none;" onclick="lifecycleBatch()">批量操作</button>
           </div>
 
           <div class="card" style="margin-bottom:0;">
@@ -301,14 +308,15 @@
                   <thead>
                     <tr>
                       <th>订单ID</th>
-                      <th>用户手机号</th>
+                      <th>手机号</th>
                       <th>菜品</th>
                       <th>状态</th>
-                      <th>创建时间</th>
+                      <th>时间</th>
+                      <th>操作</th>
                     </tr>
                   </thead>
                   <tbody id="orders-tbody">
-                    <tr><td colspan="5" class="loading-text">加载中...</td></tr>
+                    <tr><td colspan="6" class="loading-text">加载中...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -446,6 +454,19 @@
 
           </div>
 
+          <!-- ====== 生命周期配置 ====== -->
+          <div class="cc-card cc-settings-form">
+            <div class="cc-card-header"><span class="cc-dot"></span> LIFECYCLE CONFIG — 生命周期配置</div>
+            <div class="card-body">
+              <div class="settings-info-row"><span class="settings-label">自动归档</span><span class="settings-value">完成后 <strong>48 小时</strong> 自动归档（每小时检查一次）</span></div>
+              <div class="settings-info-row"><span class="settings-label">自动软删除</span><span class="settings-value">归档 <strong>90 天</strong> 后自动软删除（每日凌晨 3 点）</span></div>
+              <div class="settings-info-row"><span class="settings-label">看板订单上限</span><span class="settings-value">最多展示 <strong>50 条</strong> 活跃订单</span></div>
+              <div class="settings-info-row"><span class="settings-label">每列显示上限</span><span class="settings-value">每列最多 <strong>10 条</strong>，超出可前往历史记录</span></div>
+              <div class="settings-info-row"><span class="settings-label">归档位置</span><span class="settings-value">订单记录 → 已归档 Tab → 可恢复或软删除</span></div>
+              <div class="settings-info-row"><span class="settings-label">恢复方式</span><span class="settings-value">数据管理 → 找到订单 → 点击「恢复」即可重新激活</span></div>
+            </div>
+          </div>
+
           <!-- ====== 密码修改 ====== -->
           <div class="cc-card cc-settings-form">
             <div class="cc-card-header"><span class="cc-dot"></span> ACCESS CONTROL</div>
@@ -540,13 +561,14 @@
 
   // ===== 数字动画 =====
   function animateNumber(el, target) {
+    // 兜底：undefined/null/NaN → 0
+    target = Number(target) || 0;
     var start = 0;
-    var duration = 800;  // 800ms ease-out
+    var duration = 800;
     var startTime = null;
     function step(ts) {
       if (!startTime) startTime = ts;
       var progress = Math.min((ts - startTime) / duration, 1);
-      // ease-out: 1 - (1-t)^3
       var eased = 1 - Math.pow(1 - progress, 3);
       el.textContent = Math.floor(eased * target);
       if (progress < 1) requestAnimationFrame(step);
@@ -575,6 +597,9 @@
       animateNumber(document.getElementById('stat-families'), d.familyCount);
       animateNumber(document.getElementById('stat-orders'), d.todayOrders);
       animateNumber(document.getElementById('stat-active-families'), d.activeFamilyGroups || 0);
+      // 生命周期统计
+      animateNumber(document.getElementById('stat-active-orders'), (d.todayOrders || 0) + (d.cookingOrders || 0));
+      animateNumber(document.getElementById('stat-archived'), d.archivedCount || 0);
       renderSparkBars('spark-users', d.userCount, 50);
       renderSparkBars('spark-families', d.familyCount, 20);
       renderSparkBars('spark-orders', d.todayOrders, 30);
@@ -1069,41 +1094,70 @@
   }
 
   // ====== 订单记录 ======
+  // ====== 订单生命周期管理 ======
+  var _lcScope = 'active'; // active | archived | deleted
+  function switchLifecycle(scope) {
+    _lcScope = scope;
+    document.querySelectorAll('.lifecycle-tab').forEach(function(b) { b.classList.remove('active'); b.classList.add('btn-outline'); });
+    var activeBtn = document.querySelector('.lifecycle-tab[data-lc="' + scope + '"]');
+    if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('btn-outline'); }
+    var batchBtn = document.getElementById('lc-batch-btn');
+    batchBtn.style.display = (scope === 'active') ? '' : 'none';
+    batchBtn.textContent = '批量归档 completed';
+    loadOrderPage(1);
+  }
+  function lifecycleBatch() {
+    if (!confirm('确定批量归档所有 completed 订单吗？')) return;
+    fetch('/api/dashboard/data/batch-archive', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) })
+      .then(function(r) { return r.json(); }).then(function(d) { alert(d.message); loadOrderPage(1); });
+  }
   function loadOrderPage(page) {
     window._currentOrderPage = page;
     var tbody = document.getElementById('orders-tbody');
-    tbody.innerHTML = '<tr><td colspan="5" class="loading-text">加载中...</td></tr>';
-    var status = encodeURIComponent(document.getElementById('order-status-filter').value);
-    var qs = '?page=' + page + '&limit=20';
-    if (status) qs += '&status=' + status;
-
-    fetch('/api/dashboard/orders' + qs).then(function(r) { return r.json(); }).then(function(d) {
+    tbody.innerHTML = '<tr><td colspan="6" class="loading-text">加载中...</td></tr>';
+    var apiMap = { active: '/api/dashboard/orders', archived: '/api/dashboard/data/archived', deleted: '/api/dashboard/data/deleted' };
+    var url = (apiMap[_lcScope] || apiMap.active) + '?page=' + page + '&limit=20';
+    fetch(url).then(function(r) { return r.json(); }).then(function(d) {
       var orders = d.orders || [];
-      if (orders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-text">暂无数据</td></tr>';
-      } else {
-        tbody.innerHTML = orders.map(function(o) {
-          return '<tr>'
-            + '<td>#' + o.id + '</td>'
-            + '<td>' + escapeHtml(o.phone) + '</td>'
-            + '<td>' + escapeHtml(o.dishNames.join('、') || '无') + '</td>'
-            + '<td><span class="status-dot ' + orderStatusClass(o.status) + '">' + orderStatusName(o.status) + '</span></td>'
-            + '<td>' + escapeHtml(formatTime(o.createdAt)) + '</td>'
-            + '</tr>';
-        }).join('');
-      }
+      if (orders.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="empty-text">暂无数据</td></tr>'; renderPagination('orders-pagination', 0, 0, 0, loadOrderPage, 'loadOrderPage'); return; }
+      tbody.innerHTML = orders.map(function(o) {
+        var timeField = o.archivedAt || o.deletedAt || o.createdAt;
+        var actionHtml = '';
+        if (_lcScope === 'active') {
+          actionHtml = '<button class="btn btn-outline btn-xs" onclick="lifecycleAction(\'archive\',' + o.id + ')">归档</button>';
+        } else if (_lcScope === 'archived') {
+          actionHtml = '<button class="btn btn-outline btn-xs" onclick="lifecycleAction(\'restore\',' + o.id + ')">恢复</button> <button class="btn btn-danger btn-xs" onclick="lifecycleAction(\'softdelete\',' + o.id + ')">软删除</button>';
+        } else {
+          actionHtml = '<button class="btn btn-outline btn-xs" onclick="lifecycleAction(\'restore\',' + o.id + ')">恢复</button> <button class="btn btn-danger btn-xs" onclick="if(confirm(\"永久删除不可恢复，确定？\"))lifecycleAction(\'permanent\',' + o.id + ')">永久删除</button>';
+        }
+        return '<tr><td>#' + o.id + '</td><td>' + escapeHtml(o.phone || '') + '</td><td>' + (o.dishNames ? escapeHtml(o.dishNames.join('、')) : '-') + '</td><td>' + escapeHtml(o.status || '') + '</td><td>' + escapeHtml(formatTime(timeField)) + '</td><td>' + actionHtml + '</td></tr>';
+      }).join('');
       renderPagination('orders-pagination', d.page, d.totalPages, d.total, loadOrderPage, 'loadOrderPage');
-    }).catch(function() {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty-text">加载失败</td></tr>';
-      document.getElementById('orders-pagination').innerHTML = '';
-    });
+    }).catch(function() { tbody.innerHTML = '<tr><td colspan="6" class="empty-text">加载失败</td></tr>'; });
+  }
+  function lifecycleAction(action, id) {
+    var endpoints = {
+      archive:  ['PUT', '/api/dashboard/data/restore/' + id + '/archive'], // uses individual archive
+      restore:  ['PUT', '/api/dashboard/data/restore/' + id],
+      softdelete: ['PUT', '/api/dashboard/data/batch-softdelete'], // individual via body not built — use archive then batch
+    };
+    // 简化：archive 和 restore 直接调
+    if (action === 'archive') {
+      fetch('/api/orders/archive/' + id, { method: 'PUT' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
+    } else if (action === 'restore') {
+      fetch('/api/dashboard/data/restore/' + id, { method: 'PUT' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
+    } else if (action === 'softdelete') {
+      if (!confirm('确定软删除该订单？')) return;
+      fetch('/api/dashboard/data/restore/' + id, { method: 'PUT' }).then(function(){ return fetch('/api/dashboard/data/batch-softdelete', { method: 'PUT' }); }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
+    } else if (action === 'permanent') {
+      fetch('/api/dashboard/data/permanent/' + id, { method: 'DELETE' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
+    }
   }
 
   function orderStatusName(s) {
     var map = { pending: '待接单', accepted: '已接单', cooking: '烹饪中', completed: '已完成', rejected: '已拒单' };
     return map[s] || s;
   }
-
   function orderStatusClass(s) {
     var map = { pending: 'status-pending', accepted: 'status-accepted', cooking: 'status-cooking', completed: 'status-completed', rejected: 'status-rejected' };
     return map[s] || '';
@@ -1211,6 +1265,7 @@
   function animateKpiValue(elId, target) {
     var el = document.getElementById(elId);
     if (!el) return;
+    target = Number(target) || 0;
     var start = 0, startTime = null, duration = 800;
     function step(ts) {
       if (!startTime) startTime = ts;

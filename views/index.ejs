@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>老婆点菜</title>
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css?v=2">
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -263,15 +263,17 @@
       var html = '<div class="chef-order-card" data-id="' + o.id + '">';
       html += '<div class="chef-order-head"><span class="chef-order-time">' + time + '</span></div>';
       html += '<div class="chef-order-body">' + dishText + '</div>';
-      if (o.status === 'rejected' && o.rejectReason) {
-        html += '<div class="chef-order-reason">原因：' + escapeHtml(o.rejectReason) + '</div>';
-      }
       if (o.status === 'pending') {
         html += '<div class="chef-order-btns"><button class="chef-btn-accept" onclick="chefOrderAction(\'' + o.id + '\',\'accept\')">接单</button><button class="chef-btn-reject" onclick="chefReject(\'' + o.id + '\')">拒单</button></div>';
       } else if (o.status === 'accepted') {
         html += '<div class="chef-order-btns"><button class="chef-btn-cook" onclick="chefOrderAction(\'' + o.id + '\',\'cook\')">开始烹饪</button></div>';
       } else if (o.status === 'cooking') {
         html += '<div class="chef-order-btns"><button class="chef-btn-done" onclick="chefOrderAction(\'' + o.id + '\',\'complete\')">完成</button></div>';
+      } else if (o.status === 'completed') {
+        html += '<div class="chef-order-btns"><button class="chef-btn-archive" onclick="archiveOrder(\'' + o.id + '\')">移出看板</button></div>';
+      } else if (o.status === 'rejected') {
+        if (o.rejectReason) html += '<div class="chef-order-reason">原因：' + escapeHtml(o.rejectReason) + '</div>';
+        html += '<div class="chef-order-btns"><button class="chef-btn-archive" onclick="archiveOrder(\'' + o.id + '\')">移出看板</button></div>';
       }
       html += '</div>';
       return html;
@@ -289,12 +291,20 @@
         completed: '✅ 已完成', rejected: '😭 已拒单'
       };
       _statusKeys.forEach(function(key) {
-        html += '<div class="chef-order-section"><h3 class="chef-section-title">' + STATUS_LABEL[key] + '</h3>';
+        var clearBtn = '';
+        if (key === 'completed' || key === 'rejected') {
+          clearBtn = ' <button class="chef-btn-clear" onclick="archiveBatch(\'' + key + '\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-muted);cursor:pointer;">清空</button>';
+        }
+        html += '<div class="chef-order-section"><h3 class="chef-section-title">' + STATUS_LABEL[key] + clearBtn + '</h3>';
         html += '<div class="chef-order-list">';
         if (groups[key].length === 0) {
           html += '<div class="chef-empty">还没有想吃的菜呢 🍳</div>';
         } else {
-          groups[key].forEach(function(o) { html += buildChefOrderCard(o); });
+          var shown = groups[key].slice(0, 10);
+          shown.forEach(function(o) { html += buildChefOrderCard(o); });
+          if (groups[key].length > 10) {
+            html += '<div class="chef-empty">还有 ' + (groups[key].length - 10) + ' 条，请前往历史记录查看</div>';
+          }
         }
         html += '</div></div>';
       });
@@ -345,8 +355,11 @@
         btnsEl.innerHTML = '<button class="chef-btn-cook" onclick="chefOrderAction(\'' + orderId + '\',\'cook\')">开始烹饪</button>';
       } else if (status === 'cooking') {
         btnsEl.innerHTML = '<button class="chef-btn-done" onclick="chefOrderAction(\'' + orderId + '\',\'complete\')">完成</button>';
+      } else if (status === 'completed') {
+        btnsEl.innerHTML = '<button class="chef-btn-archive" onclick="archiveOrder(\'' + orderId + '\')">移出看板</button>';
+      } else if (status === 'rejected') {
+        btnsEl.innerHTML = '<button class="chef-btn-archive" onclick="archiveOrder(\'' + orderId + '\')">移出看板</button>';
       } else {
-        // completed / rejected — 没有操作按钮
         if (btnsEl) btnsEl.remove();
       }
     }
@@ -435,7 +448,49 @@
         .catch(function() { card.style.pointerEvents = ''; chefShowError(); });
     }
 
-    // === 家庭设置：二维码 ===
+    // === 快速归档（单条 + 批量） ===
+    function archiveOrder(orderId) {
+      var card = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
+      if (!card) return;
+      card.style.pointerEvents = 'none';
+      card.style.opacity = '0';
+      card.style.transform = 'scale(0.98)';
+      card.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
+
+      fetch('/api/orders/archive/' + orderId, { method: 'PUT' })
+        .then(function(r) { return r.json(); })
+        .then(function(r) {
+          if (!r.success) { card.style.opacity = ''; card.style.transform = ''; card.style.pointerEvents = ''; chefShowError(); return; }
+          setTimeout(function() {
+            var list = card.closest('.chef-order-list');
+            card.remove();
+            if (list) ensureEmptyPlaceholder(list);
+          }, 160);
+        })
+        .catch(function() { card.style.opacity = ''; card.style.transform = ''; card.style.pointerEvents = ''; chefShowError(); });
+    }
+
+    function archiveBatch(status) {
+      var label = status === 'completed' ? '已完成' : '已拒单';
+      if (!confirm('确定清空所有「' + label + '」订单吗？\n这些订单仍可在历史记录中查看。')) return;
+
+      // 淡出当前列的所有卡片
+      var list = getChefOrderList(status);
+      if (list) {
+        var cards = list.querySelectorAll('.chef-order-card');
+        cards.forEach(function(c) { c.style.opacity = '0'; c.style.transition = 'opacity 0.15s ease'; c.style.pointerEvents = 'none'; });
+      }
+
+      fetch('/api/orders/archive-batch', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: status }),
+      }).then(function(r) { return r.json(); })
+        .then(function(r) {
+          if (!r.success) { chefShowError(); if (list) { list.querySelectorAll('.chef-order-card').forEach(function(c) { c.style.opacity = ''; c.style.pointerEvents = ''; }); } return; }
+          if (list) setTimeout(function() { list.innerHTML = '<div class="chef-empty">还没有想吃的菜呢 🍳</div>'; }, 180); })
+        .catch(function() { chefShowError(); if (list) { list.querySelectorAll('.chef-order-card').forEach(function(c) { c.style.opacity = ''; c.style.pointerEvents = ''; }); } });
+    }
     var chefQrDone = false;
     document.getElementById('chef-gen-qr').addEventListener('click', function() {
       if (chefQrDone) return; chefQrDone = true;

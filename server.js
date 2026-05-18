@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const mysql = require('mysql2/promise');
+const cron = require('node-cron');
 const bcrypt = require('bcryptjs');
 const { sendSms } = require('./services/smsService');
 const multer = require('multer');
@@ -48,6 +49,73 @@ const pool = mysql.createPool({
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
+});
+
+// ===== 订单生命周期：定时归档任务 =====
+function ts() { return new Date().toISOString(); }
+
+// 每小时：completed/rejected 超过 48 小时 → archived
+cron.schedule('0 * * * *', async () => {
+  console.log(ts() + ' [CRON] archive start');
+  try {
+    var [r] = await pool.execute(
+      `UPDATE orders SET archived_at = NOW()
+       WHERE status IN ('completed','rejected')
+         AND deleted_at IS NULL
+         AND archived_at IS NULL
+         AND completed_at IS NOT NULL
+         AND completed_at < DATE_SUB(NOW(), INTERVAL 48 HOUR)`
+    );
+    console.log(ts() + ' [CRON] archive done: ' + r.affectedRows + ' rows');
+  } catch (e) { console.error(ts() + ' [CRON] archive ERROR:', e.message); }
+});
+
+// 每天凌晨 3 点：archived 超过 90 天 → soft delete
+cron.schedule('0 3 * * *', async () => {
+  console.log(ts() + ' [CRON] soft-delete start');
+  try {
+    var [r] = await pool.execute(
+      `UPDATE orders SET deleted_at = NOW()
+       WHERE archived_at IS NOT NULL
+         AND deleted_at IS NULL
+         AND archived_at < DATE_SUB(NOW(), INTERVAL 90 DAY)`
+    );
+    console.log(ts() + ' [CRON] soft-delete done: ' + r.affectedRows + ' rows');
+  } catch (e) { console.error(ts() + ' [CRON] soft-delete ERROR:', e.message); }
+});
+
+// 每天凌晨 2 点：汇总昨日菜品销量到 dish_daily_stats
+cron.schedule('0 2 * * *', async () => {
+  console.log(ts() + ' [CRON] stats-rollup start');
+  try {
+    await pool.execute(
+      `INSERT INTO dish_daily_stats (dish_id, stat_date, order_count)
+       SELECT oi.dish_id, DATE_SUB(CURDATE(), INTERVAL 1 DAY), COUNT(*)
+       FROM order_items oi JOIN orders o ON oi.order_id = o.id
+       WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND o.created_at < CURDATE() AND o.deleted_at IS NULL
+       GROUP BY oi.dish_id ON DUPLICATE KEY UPDATE order_count = VALUES(order_count)`
+    );
+    console.log(ts() + ' [CRON] stats-rollup done');
+  } catch (e) { console.error(ts() + ' [CRON] stats-rollup ERROR:', e.message); }
+});
+
+// 每5分钟：刷新 dashboard_stats 聚合表
+cron.schedule('*/5 * * * *', async () => {
+  try {
+    await pool.execute('INSERT INTO dashboard_stats (id, total_users, total_families, today_orders, today_completed, active_families) VALUES (1, (SELECT COUNT(*) FROM users), (SELECT COUNT(*) FROM family_groups), (SELECT COUNT(*) FROM orders WHERE deleted_at IS NULL AND DATE(created_at)=CURDATE()), (SELECT COUNT(*) FROM orders WHERE deleted_at IS NULL AND status=\"completed\" AND DATE(created_at)=CURDATE()), (SELECT COUNT(DISTINCT family_group_id) FROM orders WHERE deleted_at IS NULL AND family_group_id IS NOT NULL AND created_at>=DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY))) ON DUPLICATE KEY UPDATE total_users=VALUES(total_users), total_families=VALUES(total_families), today_orders=VALUES(today_orders), today_completed=VALUES(today_completed), active_families=VALUES(active_families), updated_at=NOW()');
+  } catch (e) { /* 聚合表未建时静默跳过 */ }
+});
+
+// ===== 系统级错误监控 =====
+process.on('uncaughtException', function(err) {
+  console.error(ts() + ' [FATAL] uncaughtException:', err.message);
+  console.error(err.stack);
+  // 不退出进程，让 PM2 或容器自动重启
+});
+
+process.on('unhandledRejection', function(reason) {
+  console.error(ts() + ' [FATAL] unhandledRejection:', reason);
+  if (reason && reason.stack) console.error(reason.stack);
 });
 
 // 1. HTTP 压缩（第一个中间件，阈值 1KB）
@@ -433,7 +501,7 @@ app.get('/', async (req, res) => {
     var chefData = {};
     if (userRole === 'chef') {
       var chefParallel = await Promise.all([
-        pool.execute('SELECT o.id, o.status, o.reject_reason, o.created_at FROM orders o WHERE o.' + scopeColumn + ' = ? AND o.deleted_at IS NULL ORDER BY o.created_at DESC', [scopeValue]),
+        pool.execute('SELECT o.id, o.status, o.reject_reason, o.created_at FROM orders o WHERE o.' + scopeColumn + ' = ? AND o.deleted_at IS NULL AND o.archived_at IS NULL ORDER BY o.created_at DESC', [scopeValue]),
         pool.execute('SELECT COUNT(*) AS cnt FROM dishes WHERE ' + scopeColumn + ' = ?', [scopeValue]),
         pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE ' + scopeColumn + ' = ? AND deleted_at IS NULL AND YEAR(created_at)=YEAR(NOW()) AND MONTH(created_at)=MONTH(NOW())', [scopeValue]),
         pool.execute('SELECT name FROM categories WHERE ' + scopeColumn + ' = ? ORDER BY sort_order, id', [scopeValue])
@@ -1305,7 +1373,7 @@ app.get('/api/family/orders', requireAuth, async (req, res) => {
     var days = parseInt(req.query.days, 10) || 0;
     var search = (req.query.search || '').trim();
 
-    var where = 'WHERE o.' + scopeCol + ' = ? AND o.deleted_at IS NULL';
+    var where = 'WHERE o.' + scopeCol + ' = ? AND o.deleted_at IS NULL AND o.archived_at IS NULL';
     var params = [scopeVal];
 
     if (days > 0) {
@@ -1862,13 +1930,140 @@ app.get('/dashboard', requireDashboard, function(req, res) {
   res.render('dashboard', { loggedIn: true, error: '' });
 });
 
+// ===== 大厨快速归档 =====
+app.put('/api/orders/archive/:id', requireAuth, async function(req, res) {
+  try {
+    var scopeCol = req.scopeColumn || 'user_id';
+    var scopeVal = req.scopeValue || req.session.userId;
+    var [r] = await pool.execute('UPDATE orders SET archived_at = NOW() WHERE id = ? AND ' + scopeCol + ' = ? AND deleted_at IS NULL AND archived_at IS NULL', [req.params.id, scopeVal]);
+    if (r.affectedRows === 0) return res.json({ success: false, message: '订单不存在或已归档' });
+    invalidateCache(scopeVal);
+    res.json({ success: true, message: '已移出看板' });
+  } catch (e) { res.status(500).json({ error: '服务器错误' }); }
+});
+
+app.put('/api/orders/archive-batch', requireAuth, async function(req, res) {
+  try {
+    var scopeCol = req.scopeColumn || 'user_id';
+    var scopeVal = req.scopeValue || req.session.userId;
+    var status = (req.body.status || '').trim();
+    if (!status) return res.json({ success: false, message: '请指定要清理的状态' });
+    var [r] = await pool.execute('UPDATE orders SET archived_at = NOW() WHERE ' + scopeCol + ' = ? AND status = ? AND deleted_at IS NULL AND archived_at IS NULL', [scopeVal, status]);
+    invalidateCache(scopeVal);
+    res.json({ success: true, message: '已清理 ' + r.affectedRows + ' 条订单' });
+  } catch (e) { res.status(500).json({ error: '服务器错误' }); }
+});
+
+// ===== 数据管理中心 =====
+app.get('/api/dashboard/data/archived', requireDashboard, async function(req, res) {
+  try {
+    var page = parseInt(req.query.page, 10) || 1;
+    var limit = parseInt(req.query.limit, 10) || 20;
+    var offset = (page - 1) * limit;
+    var [[{ cnt: total }]] = await pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NULL AND archived_at IS NOT NULL');
+    var [rows] = await pool.execute('SELECT o.id, o.status, o.archived_at, o.created_at, u.phone FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.deleted_at IS NULL AND o.archived_at IS NOT NULL ORDER BY o.archived_at DESC LIMIT ' + limit + ' OFFSET ' + offset);
+    var ids = rows.map(function(r) { return r.id; });
+    var dishMap = {};
+    if (ids.length > 0) {
+      var [items] = await pool.execute('SELECT order_id, dish_name FROM order_items WHERE order_id IN (' + ids.map(function() { return '?'; }).join(',') + ')', ids);
+      items.forEach(function(it) { if (!dishMap[it.order_id]) dishMap[it.order_id] = []; dishMap[it.order_id].push(it.dish_name); });
+    }
+    res.json({ orders: rows.map(function(r) { return { id: r.id, status: r.status, phone: (r.phone||'').substring(0,3)+'****'+(r.phone||'').substring(7), dishNames: dishMap[r.id] || [], archivedAt: r.archived_at, createdAt: r.created_at }; }), total: total, page: page, totalPages: Math.ceil(total / limit) });
+  } catch (e) { res.status(500).json({ error: '服务器错误' }); }
+});
+
+app.get('/api/dashboard/data/deleted', requireDashboard, async function(req, res) {
+  try {
+    var page = parseInt(req.query.page, 10) || 1;
+    var limit = parseInt(req.query.limit, 10) || 20;
+    var offset = (page - 1) * limit;
+    var [[{ cnt: total }]] = await pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NOT NULL');
+    var [rows] = await pool.execute('SELECT o.id, o.status, o.deleted_at, o.created_at, u.phone FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.deleted_at IS NOT NULL ORDER BY o.deleted_at DESC LIMIT ' + limit + ' OFFSET ' + offset);
+    var ids = rows.map(function(r) { return r.id; });
+    var dishMap = {};
+    if (ids.length > 0) {
+      var [items] = await pool.execute('SELECT order_id, dish_name FROM order_items WHERE order_id IN (' + ids.map(function() { return '?'; }).join(',') + ')', ids);
+      items.forEach(function(it) { if (!dishMap[it.order_id]) dishMap[it.order_id] = []; dishMap[it.order_id].push(it.dish_name); });
+    }
+    res.json({ orders: rows.map(function(r) { return { id: r.id, status: r.status, phone: (r.phone||'').substring(0,3)+'****'+(r.phone||'').substring(7), dishNames: dishMap[r.id] || [], deletedAt: r.deleted_at, createdAt: r.created_at }; }), total: total, page: page, totalPages: Math.ceil(total / limit) });
+  } catch (e) { res.status(500).json({ error: '服务器错误' }); }
+});
+
+app.put('/api/dashboard/data/restore/:id', requireDashboard, async function(req, res) {
+  try {
+    var [r] = await pool.execute('UPDATE orders SET archived_at = NULL, deleted_at = NULL WHERE id = ?', [req.params.id]);
+    if (r.affectedRows === 0) return res.json({ success: false, message: '订单不存在' });
+    cacheService.del('dash_stats');
+    res.json({ success: true, message: '已恢复为活跃状态' });
+  } catch (e) { res.status(500).json({ error: '服务器错误' }); }
+});
+
+// 批量操作
+app.put('/api/dashboard/data/batch-archive', requireDashboard, async function(req, res) {
+  try {
+    var status = (req.body.status || '').trim();
+    if (!status) return res.json({ success: false, message: '请指定状态' });
+    var [r] = await pool.execute('UPDATE orders SET archived_at = NOW() WHERE status = ? AND deleted_at IS NULL AND archived_at IS NULL', [status]);
+    cacheService.del('dash_stats');
+    res.json({ success: true, message: '已归档 ' + r.affectedRows + ' 条' });
+  } catch (e) { res.status(500).json({ error: '服务器错误' }); }
+});
+
+app.put('/api/dashboard/data/batch-softdelete', requireDashboard, async function(req, res) {
+  try {
+    var [r] = await pool.execute('UPDATE orders SET deleted_at = NOW() WHERE archived_at IS NOT NULL AND deleted_at IS NULL');
+    cacheService.del('dash_stats');
+    res.json({ success: true, message: '已软删除 ' + r.affectedRows + ' 条' });
+  } catch (e) { res.status(500).json({ error: '服务器错误' }); }
+});
+
+app.put('/api/dashboard/data/batch-restore', requireDashboard, async function(req, res) {
+  try {
+    var scope = (req.body.scope || '').trim();
+    var where = 'WHERE deleted_at IS NULL';
+    if (scope === 'archived') where = 'WHERE archived_at IS NOT NULL AND deleted_at IS NULL';
+    else if (scope === 'deleted') where = 'WHERE deleted_at IS NOT NULL';
+    else if (scope === 'all') where = '';
+    else return res.json({ success: false, message: '请指定范围: archived/deleted/all' });
+    var [r] = await pool.execute('UPDATE orders SET archived_at = NULL, deleted_at = NULL ' + where);
+    cacheService.del('dash_stats');
+    res.json({ success: true, message: '已恢复 ' + r.affectedRows + ' 条' });
+  } catch (e) { res.status(500).json({ error: '服务器错误' }); }
+});
+
+app.delete('/api/dashboard/data/permanent/:id', requireDashboard, async function(req, res) {
+  try {
+    var [[row]] = await pool.execute('SELECT id FROM orders WHERE id = ? AND deleted_at IS NOT NULL', [req.params.id]);
+    if (!row) return res.json({ success: false, message: '只能永久删除已软删除的订单' });
+    await pool.execute('DELETE FROM order_items WHERE order_id = ?', [req.params.id]);
+    await pool.execute('DELETE FROM orders WHERE id = ?', [req.params.id]);
+    cacheService.del('dash_stats');
+    res.json({ success: true, message: '已永久删除' });
+  } catch (e) { res.status(500).json({ error: '服务器错误' }); }
+});
+
 app.get('/api/dashboard/stats', requireDashboard, async function(req, res) {
   try {
     var cached = cacheService.get('dash_stats');
     if (cached) return res.json(cached);
 
-    // 并行：7 个独立 COUNT 查询
-    var [results] = await Promise.all([
+    // 优先读聚合表 O(1)，回退到实时查询
+    var [[pre]] = await pool.execute('SELECT total_users, total_families, today_orders, today_completed, active_families FROM dashboard_stats WHERE id=1');
+    if (pre && pre.total_users !== null) {
+      // 补充生命周期计数（聚合表中没有）
+      var lifeCounts = await Promise.all([
+        pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE archived_at IS NOT NULL AND deleted_at IS NULL'),
+        pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NOT NULL'),
+      ]);
+      var [[{ cnt: archivedCount }]] = lifeCounts[0];
+      var [[{ cnt: deletedCount }]] = lifeCounts[1];
+      var d = { userCount: pre.total_users, familyCount: pre.total_families, todayOrders: pre.today_orders, activeFamilyGroups: pre.active_families, newUsersToday: 0, cookingOrders: 0, completedOrdersToday: pre.today_completed, completionRate: pre.today_orders > 0 ? Math.round(pre.today_completed / pre.today_orders * 1000) / 10 : 0, archivedCount: archivedCount || 0, deletedCount: deletedCount || 0 };
+      cacheService.set('dash_stats', d, 15);
+      return res.json(d);
+    }
+
+    // 回退：7 个独立 COUNT 查询
+    var results = await Promise.all([
       pool.execute('SELECT COUNT(*) AS cnt FROM users'),
       pool.execute('SELECT COUNT(*) AS cnt FROM family_groups'),
       pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NULL AND DATE(created_at) = CURDATE()'),
@@ -1876,6 +2071,8 @@ app.get('/api/dashboard/stats', requireDashboard, async function(req, res) {
       pool.execute('SELECT COUNT(*) AS cnt FROM users WHERE DATE(created_at) = CURDATE()'),
       pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NULL AND status = ?', ['cooking']),
       pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NULL AND status = ? AND DATE(created_at) = CURDATE()', ['completed']),
+      pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE archived_at IS NOT NULL AND deleted_at IS NULL'),
+      pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE deleted_at IS NOT NULL'),
     ]);
     var [[{ cnt: userCount }]] = results[0];
     var [[{ cnt: familyCount }]] = results[1];
@@ -1884,8 +2081,10 @@ app.get('/api/dashboard/stats', requireDashboard, async function(req, res) {
     var [[{ cnt: newUsersToday }]] = results[4];
     var [[{ cnt: cookingOrders }]] = results[5];
     var [[{ cnt: completedOrdersToday }]] = results[6];
+    var [[{ cnt: archivedCount }]] = results[7];
+    var [[{ cnt: deletedCount }]] = results[8];
     var completionRate = todayOrders > 0 ? Math.round(completedOrdersToday / todayOrders * 1000) / 10 : 0;
-    var data = { userCount, familyCount, todayOrders, activeFamilyGroups, newUsersToday, cookingOrders, completedOrdersToday, completionRate };
+    var data = { userCount, familyCount, todayOrders, activeFamilyGroups, newUsersToday, cookingOrders, completedOrdersToday, completionRate, archivedCount: archivedCount || 0, deletedCount: deletedCount || 0 };
     cacheService.set('dash_stats', data, 15);
     res.json(data);
   } catch (err) {
@@ -2320,7 +2519,7 @@ app.get('/api/dashboard/live-feed', requireDashboard, async function(req, res) {
 
     // 订单事件
     var [orderRows] = await pool.execute(
-      'SELECT o.id, o.status, o.created_at, u.phone FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.deleted_at IS NULL ORDER BY o.created_at DESC LIMIT 20'
+      'SELECT o.id, o.status, o.created_at, u.phone FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.deleted_at IS NULL AND o.archived_at IS NULL ORDER BY o.created_at DESC LIMIT 20'
     );
     orderRows.forEach(function(r) {
       var ph = (r.phone || '');
@@ -2614,7 +2813,7 @@ app.get('/api/family/cooking-status', requireAuth, async function(req, res) {
     var scopeCol = req.scopeColumn || 'user_id';
     var scopeVal = req.scopeValue || req.session.userId;
     var [rows] = await pool.execute(
-      'SELECT o.id, o.status FROM orders o WHERE o.' + scopeCol + ' = ? AND o.deleted_at IS NULL AND o.status = ? ORDER BY o.created_at DESC LIMIT 1',
+      'SELECT o.id, o.status FROM orders o WHERE o.' + scopeCol + ' = ? AND o.deleted_at IS NULL AND o.archived_at IS NULL AND o.status = ? ORDER BY o.created_at DESC LIMIT 1',
       [scopeVal, 'cooking']
     );
     if (rows.length === 0) return res.json({ cooking: false });
