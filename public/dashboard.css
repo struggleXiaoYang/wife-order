@@ -14,11 +14,17 @@
   --dbg-border-hover: rgba(148, 163, 184, 0.25);
   --dbg-danger: #F87171;
   --dbg-danger-light: rgba(248, 113, 113, 0.12);
+  --dbg-text-white: #FFFFFF;
   --dbg-sidebar-width: 220px;
   --dbg-shadow: 0 1px 2px rgba(0,0,0,0.3);
   --dbg-radius: 8px;
   --dbg-transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --dbg-hover-glow: rgba(255, 127, 89, 0.04);
+}
+
+:focus-visible {
+  outline: 2px solid var(--dbg-accent);
+  outline-offset: 2px;
 }
 
 /* 亮色模式 */
@@ -28,6 +34,7 @@ body.light-mode {
   --dbg-card-solid: #FFFFFF;
   --dbg-accent: #FF7A59;
   --dbg-accent-light: #FFF0EB;
+  --dbg-text-white: #FFFFFF;
   --dbg-accent-glow: rgba(255, 122, 89, 0.15);
   --dbg-green: #8BAA7B;
   --dbg-text: #4A4A4A;
@@ -78,7 +85,7 @@ body.light-mode {
 }
 .dash-login-input:focus { border-color: var(--dbg-accent); box-shadow: 0 0 0 3px var(--dbg-accent-glow); }
 .dash-login-btn {
-  width: 100%; padding: 14px 0; background: var(--dbg-accent); color: #fff;
+  width: 100%; padding: 14px 0; background: var(--dbg-accent); color: var(--dbg-text-white);
   border: none; border-radius: var(--dbg-radius); font-size: 16px; font-weight: 700;
   cursor: pointer; margin-top: 8px;
   transition: all var(--dbg-transition);
@@ -166,7 +173,7 @@ body.light-mode {
   font-family: inherit; border: 1.5px solid transparent; gap: 4px;
   text-decoration: none; white-space: nowrap;
 }
-.btn-primary { background: var(--dbg-accent); color: #FFF; border-color: var(--dbg-accent); }
+.btn-primary { background: var(--dbg-accent); color: var(--dbg-text-white); border-color: var(--dbg-accent); }
 .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
 .btn-outline { background: transparent; color: var(--dbg-accent); border-color: var(--dbg-accent); }
 .btn-outline:hover { background: var(--dbg-accent-light); }
@@ -362,7 +369,7 @@ body.light-mode {
 
 /* live feed "新动态" 提示条 */
 .live-banner {
-  background: var(--dbg-accent); color: #FFF; text-align: center;
+  background: var(--dbg-accent); color: var(--dbg-text-white); text-align: center;
   padding: 8px 0; font-size: 13px; cursor: pointer; font-weight: 600;
   border-radius: 6px; margin-bottom: 12px; display: none;
   animation: pulse 2s infinite;
@@ -489,7 +496,7 @@ body.light-mode {
 }
 .pagination-btn:hover:not(:disabled) { border-color: var(--dbg-accent); color: var(--dbg-accent); }
 .pagination-btn:disabled { opacity: 0.3; cursor: default; }
-.pagination-btn.active { background: var(--dbg-accent); color: #FFF; border-color: var(--dbg-accent); }
+.pagination-btn.active { background: var(--dbg-accent); color: var(--dbg-text-white); border-color: var(--dbg-accent); }
 .pagination-ellipsis { font-size: 13px; color: var(--dbg-text-muted); padding: 0 4px; }
 .pagination-jump { font-size: 12px; color: var(--dbg-text-muted); display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .pagination-jump-input {

@@ -1,63 +1,220 @@
-@import url('https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=Nunito:wght@400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=Nunito+Sans:opsz,wght@6..12,400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap');
 
 /* ============================================================
-   设计令牌 — 治愈系智能厨房
+   设计令牌 v2.0 — 治愈系智能厨房
+   三端: 点菜员(member) / 大厨(chef) / 后台(admin)
    ============================================================ */
 :root {
-  /* 主背景 */
-  --bg:            #FFF8F1;
-  --bg-warm:       #FFF3E6;
-  /* 卡片 */
-  --card:          rgba(255, 255, 255, 0.78);
-  --card-solid:    #FFFFFF;
-  /* 文字 */
-  --text:          #3B312B;
-  --text-secondary:#8A817C;
-  --text-muted:    #B5ACA7;
-  /* 强调色 */
-  --accent:        #FF7A59;
-  --accent-hover:  #FF6035;
-  --accent-light:  rgba(255, 122, 89, 0.12);
-  --accent-glow:   rgba(255, 122, 89, 0.25);
-  /* 辅助色 — 牛油果绿 */
-  --green:         #8BAA7B;
-  --green-light:   rgba(139, 170, 123, 0.15);
-  --green-dark:    #6B8A5B;
-  /* 语义色 */
-  --success:       #4CAF50;
-  --success-light: #E8F5E9;
-  --danger:        #E57373;
-  --danger-light:  #FFF5F5;
-  --warning:       #FF9800;
-  --warning-light: #FFF3E0;
-  --info:          #2196F3;
-  --info-light:    #E3F2FD;
-  --pink:          #FF6B8A;
-  --pink-hover:    #FF4D6D;
-  --star:          #FFB347;
-  --text-white:    #FFFFFF;
-  /* 分割 & 描边 */
-  --divider:       #F1E7DD;
-  --border:        #E5D9CD;
-  --border-focus:  #FF7A59;
+  /* ===== 品牌色 — 番茄橙 (主色调) ===== */
+  --color-primary-50:  #FFF0EB;
+  --color-primary-100: #FFE0D5;
+  --color-primary-200: #FFC0AA;
+  --color-primary-300: #FF9F7F;
+  --color-primary-400: #FF8A65;
+  --color-primary-500: #FF7A59;
+  --color-primary-600: #E86C4B;
+  --color-primary-700: #C4583A;
+  --color-primary-800: #9A4430;
+  --color-primary-900: #6B2F20;
+
+  /* ===== 辅助色 — 牛油果绿 ===== */
+  --color-secondary-50:  #F4F7F1;
+  --color-secondary-100: #E6EFE0;
+  --color-secondary-200: #C8DABC;
+  --color-secondary-300: #A9C498;
+  --color-secondary-400: #8BAA7B;
+  --color-secondary-500: #7A9B6B;
+  --color-secondary-600: #6A8B5B;
+  --color-secondary-700: #506B43;
+  --color-secondary-800: #354B2B;
+  --color-secondary-900: #1B2B13;
+
+  /* ===== 中性色 (着色灰, hue 向品牌番茄橙偏移) ===== */
+  --color-white:    #FFFFFF;
+  --color-gray-50:  #FAFAF5;
+  --color-gray-100: #F5F5F0;
+  --color-gray-200: #EEEEE8;
+  --color-gray-300: #E0E0D8;
+  --color-gray-400: #BDBDB5;
+  --color-gray-500: #9E9E96;
+  --color-gray-600: #75756D;
+  --color-gray-700: #616158;
+  --color-gray-800: #424238;
+  --color-gray-900: #212118;
+
+  /* ===== 语义色 ===== */
+  --color-success-50:  #E8F5E9;
+  --color-success-400: #4CAF50;
+  --color-success-700: #2E7D32;
+  --color-warning-50:  #FFF3E0;
+  --color-warning-400: #FF9800;
+  --color-warning-700: #E65100;
+  --color-danger-50:   #FFF0F0;
+  --color-danger-400:  #E57373;
+  --color-danger-700:  #C62828;
+  --color-info-50:     #E3F2FD;
+  --color-info-400:    #2196F3;
+  --color-pink:        #FF6B8A;
+  --color-pink-hover:  #FF4D6D;
+  --color-star:        #FFB347;
+
+  /* ===== 语义令牌 — 亮色模式 ===== */
+  --app-bg:           var(--color-gray-50);
+  --card-bg:          var(--color-white);
+  --card-bg-glass:    rgba(255, 255, 255, 0.78);
+  --text-primary:     var(--color-gray-900);
+  --text-secondary:   var(--color-gray-600);
+  --text-muted:       var(--color-gray-500);
+  --color-accent:     var(--color-primary-500);
+  --color-accent-hover: var(--color-primary-600);
+  --color-accent-light: rgba(255, 122, 89, 0.12);
+  --color-accent-glow:  rgba(255, 122, 89, 0.25);
+  --color-green:      var(--color-secondary-400);
+  --color-green-light:  rgba(139, 170, 123, 0.15);
+  --color-green-dark:   var(--color-secondary-600);
+  --color-border:     var(--color-gray-300);
+  --color-border-focus: var(--color-primary-500);
+  --color-divider:    #F1E7DD;
+
   /* 阴影 */
-  --shadow-card:   0 4px 20px rgba(0, 0, 0, 0.04);
-  --shadow-hover:  0 8px 32px rgba(0, 0, 0, 0.08);
-  --shadow-nav:    0 1px 0 rgba(0, 0, 0, 0.04);
+  --shadow-none:      none;
+  --shadow-sm:        0 1px 3px rgba(0,0,0,0.04);
+  --shadow-md:        0 4px 12px rgba(0,0,0,0.06);
+  --shadow-lg:        0 8px 28px rgba(0,0,0,0.08);
+  --shadow-xl:        0 12px 40px rgba(0,0,0,0.12);
+  --shadow-glow:      0 0 16px rgba(255, 122, 89, 0.25);
+  --shadow-nav:       0 1px 0 rgba(0,0,0,0.04);
+
+  /* 间距 (4px 网格) */
+  --space-1: 0.25rem; --space-2: 0.5rem;  --space-3: 0.75rem;
+  --space-4: 1rem;    --space-5: 1.25rem;  --space-6: 1.5rem;
+  --space-8: 2rem;    --space-10: 2.5rem;  --space-12: 3rem;
+
   /* 圆角 */
-  --radius-card:   28px;
-  --radius-btn:    14px;
-  --radius-tag:    10px;
-  --radius-modal:  24px;
+  --radius-sm:   0.375rem;
+  --radius-md:   0.5rem;
+  --radius-lg:   0.75rem;
+  --radius-xl:   1rem;
+  --radius-2xl:  1.25rem;
+  --radius-3xl:  1.5rem;
+  --radius-full: 9999px;
+
   /* 动效 */
-  --ease-spring:   cubic-bezier(0.4, 0, 0.2, 1);
-  --dur-normal:    0.35s;
-  /* 字体 */
-  --font-display:  'ZCOOL XiaoWei', 'PingFang SC', 'STKaiti', serif;
-  --font-body:     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans', 'Microsoft YaHei', sans-serif;
-  --font-number:   'Nunito', -apple-system, sans-serif;
-  /* 尺寸 */
-  --max-width:     1200px;
+  --duration-instant: 0.1s;
+  --duration-fast:    0.15s;
+  --duration-normal:  0.25s;
+  --duration-slow:    0.35s;
+  --ease-out:    cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* 字体栈 (三 Skill 合规: ZCOOL+Nunito+system, 无 Inter/Roboto) */
+  --font-display: 'ZCOOL XiaoWei', 'PingFang SC', 'STKaiti', serif;
+  --font-body:    'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans', 'Microsoft YaHei', sans-serif;
+  --font-number:  'Nunito', -apple-system, sans-serif;
+  --font-mono:    'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  --status-cooking:        #9C27B0;
+  --status-cooking-light:  #F3E5F5;
+  --color-placeholder:     #B5ACA7;
+  --color-dish-border:     #FFCCA0;
+
+  /* 字号阶梯 (Impeccable: 5级, 1.25 比率) */
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-lg:   1.25rem;
+  --text-xl:   1.5rem;
+  --text-2xl:  1.875rem;
+  --text-3xl:  2.25rem;
+
+  /* 字重 */
+  --weight-normal:   400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+  --weight-extrabold: 800;
+
+  /* 行高 */
+  --leading-tight:   1.25;
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.75;
+
+  /* 触控 (web-design-guidelines: min 44px) */
+  --touch-min:     44px;
+  --touch-comfort: 48px;
+  --touch-large:   56px;
+
+  /* z-index */
+  --z-dropdown: 100; --z-sticky: 200; --z-overlay: 300;
+  --z-modal: 400; --z-toast: 500;
+
+  /* 响应式断点 */
+  --bp-mobile:  480px;
+  --bp-tablet:  768px;
+  --bp-desktop: 1024px;
+  --bp-wide:    1200px;
+
+  /* 布局 */
+  --sidebar-width: 220px;
+  --content-max:   1200px;
+
+  /* ===== 旧 token 兼容 (keep backward compat) ===== */
+  --bg:              var(--color-gray-50);
+  --bg-warm:         #FFF3E6;
+  --card:            var(--card-bg-glass);
+  --card-solid:      var(--color-white);
+  --text:            var(--text-primary);
+  --accent:          var(--color-accent);
+  --accent-hover:    var(--color-accent-hover);
+  --accent-light:    var(--color-accent-light);
+  --accent-glow:     var(--color-accent-glow);
+  --green:           var(--color-green);
+  --green-light:     var(--color-green-light);
+  --green-dark:      var(--color-green-dark);
+  --success:         var(--color-success-400);
+  --success-light:   var(--color-success-50);
+  --danger:          var(--color-danger-400);
+  --danger-light:    var(--color-danger-50);
+  --warning:         var(--color-warning-400);
+  --warning-light:   var(--color-warning-50);
+  --info:            var(--color-info-400);
+  --info-light:      var(--color-info-50);
+  --pink:            var(--color-pink);
+  --pink-hover:      var(--color-pink-hover);
+  --star:            var(--color-star);
+  --text-white:      var(--color-white);
+  --divider:         var(--color-divider);
+  --border:          var(--color-border);
+  --border-focus:    var(--color-border-focus);
+  --shadow-card:     var(--shadow-md);
+  --shadow-hover:    var(--shadow-lg);
+  --radius-card:     28px;
+  --radius-btn:      14px;
+  --radius-tag:      10px;
+  --radius-modal:    24px;
+  --dur-normal:      var(--duration-slow);
+  --max-width:       var(--content-max);
+  --font-body:       var(--font-body);
+  --font-display:    var(--font-display);
+  --font-number:     var(--font-number);
+}
+
+/* ===== 三端差异化覆盖 ===== */
+[data-app="member"] {
+  --card-radius:  var(--radius-2xl);
+  --btn-min-height: var(--touch-large);
+  --card-shadow:  var(--shadow-sm);
+}
+[data-app="chef"] {
+  --card-radius:  var(--radius-xl);
+  --btn-min-height: var(--touch-comfort);
+  --text-contrast: 1.0;
+}
+[data-app="admin"] {
+  --card-radius:  var(--radius-lg);
+  --btn-min-height: 36px;
+  --card-bg:       rgba(30, 41, 59, 0.8);
+  --backdrop-blur: 16px;
 }
 
 /* ============================================================
@@ -69,16 +226,19 @@ html { scroll-behavior: smooth; }
 
 body {
   font-family: var(--font-body);
+  font-size: var(--text-base);
   background: linear-gradient(175deg, #FFF8F1 0%, #FFECD2 30%, #FFF3E6 60%, #FFF8F1 100%);
   background-attachment: fixed;
-  color: var(--text);
+  color: var(--text-primary);
   max-width: 480px;
   margin: 0 auto;
   min-height: 100vh;
   padding-bottom: 100px;
+  line-height: var(--leading-normal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background var(--dur-normal) var(--ease-spring),
+  text-size-adjust: 100%;
+  transition: background var(--duration-slow) var(--ease-spring),
               color var(--dur-normal) var(--ease-spring);
 }
 
@@ -153,7 +313,7 @@ body::before {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: all var(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
 }
 
 .tab-btn:hover {
@@ -179,24 +339,24 @@ body::before {
 
 /* === 菜品卡片 — 玻璃态暖极简 === */
 .dish-card {
-  background: var(--card);
+  background: var(--color-white);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-2xl);
   padding: 16px 14px 36px;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   position: relative;
-  transition: transform var(--dur-normal) var(--ease-spring),
-              box-shadow var(--dur-normal) var(--ease-spring);
+  transition: transform var(--duration-normal) var(--ease-spring),
+              box-shadow var(--duration-normal) var(--ease-spring);
 }
 
 .dish-card:hover {
   transform: translateY(-6px);
-  box-shadow: var(--shadow-hover);
+  box-shadow: var(--shadow-lg);
 }
 
 .dish-card:active {
@@ -252,20 +412,21 @@ body::before {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  border: 3px solid var(--card-solid);
-  background: linear-gradient(135deg, #ff6b8a, #ff4d6d);
-  color: var(--card-solid);
+  border: 3px solid var(--color-white);
+  background: linear-gradient(135deg, var(--color-pink), var(--color-pink-hover));
+  color: var(--color-white);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(255, 107, 138, 0.4);
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+  box-shadow: var(--shadow-glow);
+  transition: transform 0.3s var(--ease-spring), box-shadow 0.3s ease;
   z-index: 1;
+  min-height: var(--touch-min);
 }
 
 .want-btn:hover {
   transform: scale(1.12);
-  box-shadow: 0 6px 20px rgba(255, 107, 138, 0.5);
+  box-shadow: var(--shadow-lg);
 }
 
 .want-btn:active {
@@ -275,13 +436,13 @@ body::before {
 
 /* 选中态 —— 弹性弹入 */
 .want-btn.on {
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
-  box-shadow: 0 4px 14px rgba(255, 122, 89, 0.4);
-  animation: pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
+  box-shadow: var(--shadow-glow);
+  animation: pop-in var(--duration-slow) var(--ease-spring);
 }
 
 .want-btn.on:hover {
-  box-shadow: 0 6px 20px rgba(255, 122, 89, 0.5);
+  box-shadow: var(--shadow-lg);
 }
 
 @keyframes pop-in {
@@ -301,13 +462,13 @@ body::before {
   background: var(--card);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-radius: var(--radius-btn);
+  border-radius: var(--radius-full);
   padding: 14px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: var(--shadow-hover);
-  transition: box-shadow var(--dur-normal) var(--ease-spring), bottom 0.2s ease;
+  box-shadow: var(--shadow-lg);
+  transition: box-shadow var(--duration-normal) var(--ease-spring), bottom 0.2s ease;
   z-index: 10;
 }
 
@@ -321,30 +482,32 @@ body::before {
   font-size: 22px;
   font-weight: 700;
   color: var(--accent);
-  transition: all 0.3s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.3s ease;
 }
 
 .submit-btn {
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
-  color: var(--card-solid);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
+  color: var(--color-white);
   border: none;
-  border-radius: 24px;
+  border-radius: var(--radius-md);
   padding: 11px 28px;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(255, 122, 89, 0.35);
-  transition: all 0.25s ease;
+  box-shadow: var(--shadow-glow);
+  transition: transform, opacity, box-shadow, background, color, border-colorvar(--duration-fast) var(--ease-out);
+  min-height: var(--touch-min);
 }
 
 .submit-btn:hover {
-  box-shadow: 0 6px 20px rgba(255, 122, 89, 0.45);
-  transform: translateY(-1px);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-2px);
+  filter: brightness(1.08);
 }
 
 .submit-btn:active {
   opacity: 0.85;
-  transform: scale(0.96);
+  transform: scale(0.97);
 }
 
 /* === 搜索框 === */
@@ -487,7 +650,7 @@ body::before {
 .hp-btn {
   padding: 6px 13px; border: 1.5px solid var(--border); border-radius: 8px;
   background: var(--card-solid); color: var(--text); font-size: 13px;
-  font-family: inherit; cursor: pointer; transition: all 0.2s ease;
+  font-family: inherit; cursor: pointer; transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
 }
 .hp-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .hp-btn:disabled { opacity: 0.35; cursor: default; }
@@ -539,7 +702,7 @@ body::before {
 .cop-btn {
   padding: 6px 13px; border: 1.5px solid var(--border); border-radius: 8px;
   background: var(--card-solid); color: var(--text); font-size: 13px;
-  font-family: inherit; cursor: pointer; transition: all 0.2s ease;
+  font-family: inherit; cursor: pointer; transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
 }
 .cop-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .cop-btn:disabled { opacity: 0.35; cursor: default; }
@@ -603,7 +766,7 @@ body::before {
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
 }
 .bind-btn-gotit:hover { background: var(--bg-warm); }
 
@@ -614,7 +777,7 @@ body::before {
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
 }
 .bind-btn-scan {
   background: linear-gradient(135deg,var(--accent),var(--accent-hover));
@@ -701,7 +864,7 @@ body::before {
 }
 
 .star-char:hover {
-  color: #ffb347;
+  color: var(--color-star);
   transform: scale(1.2);
 }
 
@@ -725,27 +888,27 @@ body::before {
 /* === 历史状态标签 === */
 .hst-pending {
   font-size: 12px;
-  color: #e65100;
+  color: var(--color-warning-700);
 }
 
 .hst-accepted {
   font-size: 12px;
-  color: #1565c0;
+  color: var(--color-info-400);
 }
 
 .hst-cooking {
   font-size: 12px;
-  color: #7b1fa2;
+  color: var(--status-cooking);
 }
 
 .hst-completed {
   font-size: 12px;
-  color: #2e7d32;
+  color: var(--color-success-700);
 }
 
 .hst-rejected {
   font-size: 12px;
-  color: var(--danger);
+  color: var(--color-danger-400);
 }
 
 /* === 历史拒单原因 === */
@@ -769,7 +932,7 @@ body::before {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
 }
 
 .refresh-btn:active {
@@ -792,28 +955,30 @@ body::before {
 }
 
 .spin-btn {
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover), var(--accent-hover));
-  color: var(--card-solid);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
+  color: var(--color-white);
   border: none;
-  border-radius: 20px;
+  border-radius: var(--radius-md);
   padding: 12px 28px;
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
   width: 100%;
   max-width: 340px;
-  box-shadow: 0 4px 18px rgba(255, 122, 89, 0.4);
+  box-shadow: var(--shadow-glow);
   animation: float-btn 2s ease-in-out infinite;
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  transition: transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+  min-height: var(--touch-min);
 }
 
 .spin-btn:hover {
   transform: scale(1.05);
-  box-shadow: 0 8px 28px rgba(255, 122, 89, 0.55);
+  box-shadow: var(--shadow-lg);
+  filter: brightness(1.08);
 }
 
 .spin-btn:active {
-  transform: scale(0.96);
+  transform: scale(0.97);
 }
 
 .spin-btn-disabled {
@@ -1071,7 +1236,7 @@ body::before {
 }
 
 .remark-input::placeholder {
-  color: #d0c0b8;
+  color: var(--color-placeholder);
   font-size: 12px;
 }
 
@@ -1087,7 +1252,7 @@ body::before {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #ff6b8a, var(--accent));
+  background: linear-gradient(135deg, var(--color-pink), var(--accent));
   box-shadow: 0 4px 14px rgba(255, 107, 138, 0.5);
   z-index: 50;
   pointer-events: none;
@@ -1129,7 +1294,7 @@ body::before {
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-  transition: all 0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
   white-space: nowrap;
 }
 .chef-funcbtn.active {
@@ -1220,7 +1385,7 @@ body::before {
 .chef-btn-reject {
   padding: 4px 14px; border: 1px solid var(--danger); background: var(--card-solid); color: var(--danger);
   border-radius: 10px; font-size: 12px; cursor: pointer; flex-shrink: 0;
-  transition: all 0.15s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.15s ease;
 }
 .chef-btn-reject:hover { background: var(--danger-light); }
 .chef-btn-del {
@@ -1232,37 +1397,45 @@ body::before {
 .chef-unbind-btn {
   width: 100%; padding: 10px 0; border: 2px solid var(--danger); background: var(--card-solid);
   color: var(--danger); border-radius: 14px; font-size: 13px; font-weight: 600; cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
 }
 .chef-unbind-btn:hover { background: var(--danger-light); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(229,57,53,0.15); }
 
 .bind-exit-btn {
   padding: 2px 10px; border: 1px solid var(--danger); background: var(--card-solid); color: var(--danger);
   border-radius: 10px; font-size: 11px; cursor: pointer; margin-left: 8px; flex-shrink: 0;
-  transition: all 0.15s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.15s ease;
 }
 .bind-exit-btn:hover { background: var(--danger-light); }
 
 .chef-btn-accept {
-  flex: 1; padding: 7px 0; border: none; background: var(--success); color: var(--card-solid); border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer;
+  flex: 1; padding: 7px 0; border: none; background: var(--color-success-400); color: var(--color-white); border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: var(--touch-min);
 }
 .chef-btn-reject {
-  flex: 1; padding: 7px 0; border: none; background: var(--danger); color: var(--card-solid); border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer;
+  flex: 1; padding: 7px 0; border: none; background: var(--color-danger-400); color: var(--color-white); border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: var(--touch-min);
 }
 .chef-btn-cook {
-  flex: 1; padding: 7px 0; border: none; background: #ff9800; color: var(--card-solid); border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer;
+  flex: 1; padding: 7px 0; border: none; background: var(--color-warning-400); color: var(--color-white); border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: var(--touch-min);
 }
 .chef-btn-done {
-  flex: 1; padding: 7px 0; border: none; background: var(--success); color: var(--card-solid); border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer;
+  flex: 1; padding: 7px 0; border: none; background: var(--color-success-400); color: var(--color-white); border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: var(--touch-min);
 }
-/* 快速归档按钮 */
+/* 快速归档按钮 — Ghost 风格 */
 .chef-btn-archive {
-  flex: 1; padding: 6px 0; border: 1px solid var(--border);
-  background: transparent; color: var(--text-muted);
-  border-radius: 10px; font-size: 12px; cursor: pointer;
-  transition: all 0.15s ease;
+  flex: 1; padding: 6px 14px; min-height: var(--touch-min);
+  border: 1px solid var(--color-text-muted);
+  background: transparent; color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs); cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
 }
-.chef-btn-archive:hover { border-color: var(--accent); color: var(--accent); }
+.chef-btn-archive:hover {
+  border-color: var(--color-danger-400);
+  color: var(--color-danger-400);
+  background: var(--color-danger-50);
+}
 
 /* 菜品管理（大厨版内嵌） */
 .chef-dish-toolbar { margin-bottom: 12px; }
@@ -1276,7 +1449,7 @@ body::before {
 }
 .chef-dish-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .chef-dish-name { font-size: 14px; font-weight: 600; color: var(--text); }
-.chef-dish-cat { font-size: 11px; background: var(--bg-warm); color: #e65100; padding: 2px 8px; border-radius: 10px; }
+.chef-dish-cat { font-size: 11px; background: var(--bg-warm); color: var(--color-warning-700); padding: 2px 8px; border-radius: 10px; }
 .chef-dish-status { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
 .chef-avail-yes { background: #e8f5e9; color: #2e7d32; }
 .chef-avail-no { background: var(--divider); color: var(--text-muted); }
@@ -1334,12 +1507,13 @@ body::before {
 .navbar {
   position: sticky;
   top: 0;
-  z-index: 50;
+  z-index: var(--z-sticky);
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--color-border);
   box-shadow: var(--shadow-nav);
-  transition: background var(--dur-normal) var(--ease-spring);
+  transition: background var(--duration-normal) var(--ease-spring);
 }
 
 .navbar-inner {
@@ -1379,7 +1553,7 @@ body::before {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: all var(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
 }
 
 .navbar-logout:hover {
@@ -1451,7 +1625,7 @@ body::before {
   text-align: center;
   cursor: pointer;
   box-shadow: 0 4px 18px var(--accent-glow);
-  transition: all var(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
 }
 
 .welcome-btn-primary:hover {
@@ -1479,7 +1653,7 @@ body::before {
   text-decoration: none;
   text-align: center;
   cursor: pointer;
-  transition: all var(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
 }
 
 .welcome-btn-secondary:hover {
@@ -1509,7 +1683,7 @@ body::before {
   border-radius: 14px;
   background: var(--card-solid);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
 }
 
 .role-btn:hover {
@@ -1618,7 +1792,7 @@ body::before {
 }
 
 .auth-input::placeholder {
-  color: #d0c0b8;
+  color: var(--color-placeholder);
 }
 
 .auth-row {
@@ -1642,7 +1816,7 @@ body::before {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
 }
 
 .auth-code-btn:hover:not(:disabled) {
@@ -1669,7 +1843,7 @@ body::before {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 18px rgba(255, 122, 89, 0.35);
-  transition: all 0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
 }
 
 .auth-btn-primary:hover {
@@ -1791,7 +1965,7 @@ body::before {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 18px rgba(255, 122, 89,0.35);
-  transition: all 0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
 }
 
 .shop-close-btn:hover {
@@ -1906,8 +2080,26 @@ body::before {
 }
 
 [data-theme="dark"] .want-btn {
-  background: linear-gradient(135deg, #ff6b8a, #ff4d6d);
+  background: linear-gradient(135deg, var(--color-pink), var(--color-pink-hover));
 }
+
+/* P0: 暗色模式语义色调暗 */
+[data-theme="dark"] .dish-card {
+  background: var(--card);
+}
+[data-theme="dark"] .bottom-bar {
+  background: rgba(22, 33, 62, 0.88);
+}
+[data-theme="dark"] {
+  --color-success-400: #5EBD64;
+  --color-success-700: #4A9F50;
+  --color-danger-400:  #F09090;
+  --color-danger-700:  #B84040;
+  --color-warning-400: #FFB74D;
+  --color-warning-700: #D08030;
+  --color-info-400:    #5B9BD5;
+}
+[data-theme="dark"] .hst-cooking { color: #CE93D8; }
 
 /* ============================================================
    今日一屏 — 30秒决策闭环
@@ -1987,7 +2179,7 @@ body::before {
   text-align: center;
   cursor: pointer;
   box-shadow: var(--shadow-card);
-  transition: all var(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
   border: 1.5px solid transparent;
 }
 .recommend-card:hover {
@@ -2034,7 +2226,7 @@ body::before {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 20px var(--accent-glow);
-  transition: all var(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
   animation: float-btn 2s ease-in-out infinite;
 }
 .generate-btn:hover {
@@ -2138,7 +2330,7 @@ body::before {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 14px var(--accent-glow);
-  transition: all 0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
 }
 .menu-confirm-btn:active {
   transform: scale(0.96);
@@ -2154,7 +2346,7 @@ body::before {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
 }
 .menu-reroll-btn:active {
   background: var(--divider);
@@ -2172,7 +2364,7 @@ body::before {
   border-radius: 12px;
   box-shadow: var(--shadow-card);
   margin-bottom: 16px;
-  transition: all var(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
 }
 .status-icon {
   font-size: 20px;
@@ -2234,5 +2426,21 @@ body::before {
     transform: translateY(-6px);
     box-shadow: var(--shadow-hover);
   }
+}
+
+/* ===== P1: 所有可交互元素最小触控高度 ===== */
+button, .btn, [role="button"], [tabindex="0"] {
+  min-height: var(--touch-min);
+}
+/* 特小按钮允许例外 */
+.btn-xs, .chef-btn-del, .chef-btn-edit, .hp-btn, .cop-btn, .navbar-logout,
+.pagination-btn, .nav-btn, .tab-btn, .theme-toggle, .topbar-hamburger {
+  min-height: 36px;
+}
+
+/* ===== P0 紧急修复: 全局 :focus-visible 焦点环（WCAG 2.1 AA） ===== */
+:focus-visible {
+  outline: 2px solid var(--color-accent) !important;
+  outline-offset: 2px !important;
 }
 

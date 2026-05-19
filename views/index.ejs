@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/style.css?v=2">
   <script src="/socket.io/socket.io.js"></script>
 </head>
-<body>
+<body data-app="<%= (locals.user && locals.user.role === 'chef') ? 'chef' : 'member' %>">
   <%- include('partials/navbar') %>
 
   <!-- ====== 今日一屏：30秒决策闭环 ====== -->

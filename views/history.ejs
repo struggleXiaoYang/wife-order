@@ -6,7 +6,7 @@
   <title>历史记录</title>
   <link rel="stylesheet" href="/style.css?v=2">
 </head>
-<body>
+<body data-app="<%= (locals.user && locals.user.role === 'chef') ? 'chef' : 'member' %>">
   <%- include('partials/navbar') %>
 
   <div class="top-nav">
