@@ -34,6 +34,7 @@ const upload = multer({
 });
 
 const app = express();
+app.set('trust proxy', 1);
 var serverStartTime = new Date();
 var SITE_LAUNCH_DATE = process.env.SITE_LAUNCH_DATE || '2026-05-15T00:00:00';
 
@@ -502,7 +503,7 @@ app.get('/', async (req, res) => {
     var chefData = {};
     if (userRole === 'chef') {
       var chefParallel = await Promise.all([
-        pool.execute('SELECT o.id, o.status, o.reject_reason, o.created_at FROM orders o WHERE o.' + scopeColumn + ' = ? AND o.deleted_at IS NULL AND o.archived_at IS NULL ORDER BY o.created_at DESC', [scopeValue]),
+        pool.execute('SELECT o.id, o.status, o.reject_reason, o.created_at FROM orders o WHERE o.' + scopeColumn + ' = ? AND o.deleted_at IS NULL ORDER BY o.created_at DESC', [scopeValue]),
         pool.execute('SELECT COUNT(*) AS cnt FROM dishes WHERE ' + scopeColumn + ' = ?', [scopeValue]),
         pool.execute('SELECT COUNT(*) AS cnt FROM orders WHERE ' + scopeColumn + ' = ? AND deleted_at IS NULL AND YEAR(created_at)=YEAR(NOW()) AND MONTH(created_at)=MONTH(NOW())', [scopeValue]),
         pool.execute('SELECT name FROM categories WHERE ' + scopeColumn + ' = ? ORDER BY sort_order, id', [scopeValue])
@@ -1374,7 +1375,7 @@ app.get('/api/family/orders', requireAuth, async (req, res) => {
     var days = parseInt(req.query.days, 10) || 0;
     var search = (req.query.search || '').trim();
 
-    var where = 'WHERE o.' + scopeCol + ' = ? AND o.deleted_at IS NULL AND o.archived_at IS NULL';
+    var where = 'WHERE o.' + scopeCol + ' = ? AND o.deleted_at IS NULL';
     var params = [scopeVal];
 
     if (days > 0) {
@@ -2520,7 +2521,7 @@ app.get('/api/dashboard/live-feed', requireDashboard, async function(req, res) {
 
     // 订单事件
     var [orderRows] = await pool.execute(
-      'SELECT o.id, o.status, o.created_at, u.phone FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.deleted_at IS NULL AND o.archived_at IS NULL ORDER BY o.created_at DESC LIMIT 20'
+      'SELECT o.id, o.status, o.created_at, u.phone FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.deleted_at IS NULL ORDER BY o.created_at DESC LIMIT 20'
     );
     orderRows.forEach(function(r) {
       var ph = (r.phone || '');
@@ -2814,7 +2815,7 @@ app.get('/api/family/cooking-status', requireAuth, async function(req, res) {
     var scopeCol = req.scopeColumn || 'user_id';
     var scopeVal = req.scopeValue || req.session.userId;
     var [rows] = await pool.execute(
-      'SELECT o.id, o.status FROM orders o WHERE o.' + scopeCol + ' = ? AND o.deleted_at IS NULL AND o.archived_at IS NULL AND o.status = ? ORDER BY o.created_at DESC LIMIT 1',
+      'SELECT o.id, o.status FROM orders o WHERE o.' + scopeCol + ' = ? AND o.deleted_at IS NULL AND o.status = ? ORDER BY o.created_at DESC LIMIT 1',
       [scopeVal, 'cooking']
     );
     if (rows.length === 0) return res.json({ cooking: false });
