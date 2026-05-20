@@ -506,6 +506,11 @@
   </div>
 
   <script>
+  window.addEventListener('unhandledrejection', function() {
+    var t = document.getElementById('toast');
+    if (t) { t.textContent = '网络错误，请稍后重试'; t.style.display = ''; setTimeout(function() { t.style.display = 'none'; }, 2500); }
+  });
+
   // ===== 侧边栏切换 =====
   function toggleSidebar() {
     var sidebar = document.getElementById('sidebar');

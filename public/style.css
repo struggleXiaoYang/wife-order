@@ -313,7 +313,7 @@ body::before {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-color var(--dur-normal) var(--ease-spring);
 }
 
 .tab-btn:hover {
@@ -482,7 +482,7 @@ body::before {
   font-size: 22px;
   font-weight: 700;
   color: var(--accent);
-  transition: transform, opacity, box-shadow, background, color, border-color0.3s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .3s ease;
 }
 
 .submit-btn {
@@ -495,7 +495,7 @@ body::before {
   font-weight: 700;
   cursor: pointer;
   box-shadow: var(--shadow-glow);
-  transition: transform, opacity, box-shadow, background, color, border-colorvar(--duration-fast) var(--ease-out);
+  transition: transform, opacity, box-shadow, background, color, border-color var(--duration-fast) var(--ease-out);
   min-height: var(--touch-min);
 }
 
@@ -650,7 +650,7 @@ body::before {
 .hp-btn {
   padding: 6px 13px; border: 1.5px solid var(--border); border-radius: 8px;
   background: var(--card-solid); color: var(--text); font-size: 13px;
-  font-family: inherit; cursor: pointer; transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  font-family: inherit; cursor: pointer; transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
 }
 .hp-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .hp-btn:disabled { opacity: 0.35; cursor: default; }
@@ -702,7 +702,7 @@ body::before {
 .cop-btn {
   padding: 6px 13px; border: 1.5px solid var(--border); border-radius: 8px;
   background: var(--card-solid); color: var(--text); font-size: 13px;
-  font-family: inherit; cursor: pointer; transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  font-family: inherit; cursor: pointer; transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
 }
 .cop-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .cop-btn:disabled { opacity: 0.35; cursor: default; }
@@ -766,7 +766,7 @@ body::before {
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
 }
 .bind-btn-gotit:hover { background: var(--bg-warm); }
 
@@ -777,7 +777,7 @@ body::before {
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
 }
 .bind-btn-scan {
   background: linear-gradient(135deg,var(--accent),var(--accent-hover));
@@ -932,7 +932,7 @@ body::before {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
 }
 
 .refresh-btn:active {
@@ -1294,7 +1294,7 @@ body::before {
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
   white-space: nowrap;
 }
 .chef-funcbtn.active {
@@ -1385,7 +1385,7 @@ body::before {
 .chef-btn-reject {
   padding: 4px 14px; border: 1px solid var(--danger); background: var(--card-solid); color: var(--danger);
   border-radius: 10px; font-size: 12px; cursor: pointer; flex-shrink: 0;
-  transition: transform, opacity, box-shadow, background, color, border-color0.15s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .15s ease;
 }
 .chef-btn-reject:hover { background: var(--danger-light); }
 .chef-btn-del {
@@ -1397,14 +1397,14 @@ body::before {
 .chef-unbind-btn {
   width: 100%; padding: 10px 0; border: 2px solid var(--danger); background: var(--card-solid);
   color: var(--danger); border-radius: 14px; font-size: 13px; font-weight: 600; cursor: pointer;
-  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
 }
 .chef-unbind-btn:hover { background: var(--danger-light); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(229,57,53,0.15); }
 
 .bind-exit-btn {
   padding: 2px 10px; border: 1px solid var(--danger); background: var(--card-solid); color: var(--danger);
   border-radius: 10px; font-size: 11px; cursor: pointer; margin-left: 8px; flex-shrink: 0;
-  transition: transform, opacity, box-shadow, background, color, border-color0.15s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .15s ease;
 }
 .bind-exit-btn:hover { background: var(--danger-light); }
 
@@ -1553,7 +1553,7 @@ body::before {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-color var(--dur-normal) var(--ease-spring);
 }
 
 .navbar-logout:hover {
@@ -1625,7 +1625,7 @@ body::before {
   text-align: center;
   cursor: pointer;
   box-shadow: 0 4px 18px var(--accent-glow);
-  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-color var(--dur-normal) var(--ease-spring);
 }
 
 .welcome-btn-primary:hover {
@@ -1653,7 +1653,7 @@ body::before {
   text-decoration: none;
   text-align: center;
   cursor: pointer;
-  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-color var(--dur-normal) var(--ease-spring);
 }
 
 .welcome-btn-secondary:hover {
@@ -1683,7 +1683,7 @@ body::before {
   border-radius: 14px;
   background: var(--card-solid);
   cursor: pointer;
-  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
 }
 
 .role-btn:hover {
@@ -1816,7 +1816,7 @@ body::before {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
 }
 
 .auth-code-btn:hover:not(:disabled) {
@@ -1843,7 +1843,7 @@ body::before {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 18px rgba(255, 122, 89, 0.35);
-  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
 }
 
 .auth-btn-primary:hover {
@@ -1965,7 +1965,7 @@ body::before {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 18px rgba(255, 122, 89,0.35);
-  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
 }
 
 .shop-close-btn:hover {
@@ -2100,6 +2100,9 @@ body::before {
   --color-info-400:    #5B9BD5;
 }
 [data-theme="dark"] .hst-cooking { color: #CE93D8; }
+[data-theme="dark"] .chef-avail-yes { background: rgba(74,222,128,0.15); color: #4ADE80; }
+[data-theme="dark"] .chef-avail-no { background: rgba(248,113,113,0.1); color: #F87171; }
+[data-theme="dark"] .role-btn:hover { border-color: var(--color-primary-300); }
 
 /* ============================================================
    今日一屏 — 30秒决策闭环
@@ -2179,7 +2182,7 @@ body::before {
   text-align: center;
   cursor: pointer;
   box-shadow: var(--shadow-card);
-  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-color var(--dur-normal) var(--ease-spring);
   border: 1.5px solid transparent;
 }
 .recommend-card:hover {
@@ -2226,7 +2229,7 @@ body::before {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 20px var(--accent-glow);
-  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-color var(--dur-normal) var(--ease-spring);
   animation: float-btn 2s ease-in-out infinite;
 }
 .generate-btn:hover {
@@ -2330,7 +2333,7 @@ body::before {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 14px var(--accent-glow);
-  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
 }
 .menu-confirm-btn:active {
   transform: scale(0.96);
@@ -2346,7 +2349,7 @@ body::before {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform, opacity, box-shadow, background, color, border-color0.2s ease;
+  transition: transform, opacity, box-shadow, background, color, border-color .2s ease;
 }
 .menu-reroll-btn:active {
   background: var(--divider);
@@ -2364,7 +2367,7 @@ body::before {
   border-radius: 12px;
   box-shadow: var(--shadow-card);
   margin-bottom: 16px;
-  transition: transform, opacity, box-shadow, background, color, border-colorvar(--dur-normal) var(--ease-spring);
+  transition: transform, opacity, box-shadow, background, color, border-color var(--dur-normal) var(--ease-spring);
 }
 .status-icon {
   font-size: 20px;

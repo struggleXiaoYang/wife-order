@@ -124,6 +124,16 @@
   </div>
 
   <script>
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    window.addEventListener('unhandledrejection', function() {
+      var t = document.getElementById('toast');
+      if (t) { t.textContent = '网络错误，请稍后重试'; t.style.display = ''; setTimeout(function() { t.style.display = 'none'; }, 2500); }
+    });
+
     var STATUS_MAP = { pending: '待接单', accepted: '已接单', cooking: '烹饪中', completed: '已完成', rejected: '已拒单' };
 
     function formatTime(iso) {
@@ -161,8 +171,8 @@
             var dishNames = order.dishNames || [];
             var remarks = order.remarks || [];
             for (var j = 0; j < dishNames.length; j++) {
-              var part = dishNames[j];
-              if (remarks[j]) part += ' <span class=\"order-remark\">(' + remarks[j] + ')</span>';
+              var part = escapeHtml(dishNames[j]);
+              if (remarks[j]) part += ' <span class=\"order-remark\">(' + escapeHtml(remarks[j]) + ')</span>';
               dishParts.push(part);
             }
             body.innerHTML = dishParts.join('、');
@@ -256,8 +266,8 @@
 
             var info = document.createElement('div');
             info.className = 'dish-row-info';
-            info.innerHTML = '<span class="dish-row-name">' + dish.name + '</span>'
-              + '<span class="dish-row-cat">' + dish.category + '</span>'
+            info.innerHTML = '<span class="dish-row-name">' + escapeHtml(dish.name) + '</span>'
+              + '<span class="dish-row-cat">' + escapeHtml(dish.category) + '</span>'
               + '<span class="dish-row-status ' + (dish.isAvailable ? 'avail-yes' : 'avail-no') + '">'
               + (dish.isAvailable ? '上架' : '已下架') + '</span>';
 
@@ -493,7 +503,7 @@
               var rankClass = idx === 0 ? 'stat-rank-gold' : idx === 1 ? 'stat-rank-silver' : idx === 2 ? 'stat-rank-bronze' : '';
               row.innerHTML =
                 '<span class=\"stat-rank ' + rankClass + '\">' + (idx + 1) + '</span>' +
-                '<span class=\"stat-dish-name\">' + item.name + '</span>' +
+                '<span class=\"stat-dish-name\">' + escapeHtml(item.name) + '</span>' +
                 '<span class=\"stat-dish-count\">' + item.count + ' 次</span>';
               el.appendChild(row);
             });
@@ -516,9 +526,9 @@
               var row = document.createElement('div');
               row.className = 'inv-row';
               row.innerHTML =
-                '<span class=\"inv-name\">' + item.ingredient_name + '</span>' +
-                '<input class=\"inv-qty-edit\" type=\"number\" value=\"' + item.quantity + '\" min=\"0\" step=\"0.1\" data-id=\"' + item.id + '\">' +
-                '<input class=\"inv-unit-edit\" value=\"' + item.unit + '\" data-id=\"' + item.id + '\">' +
+                '<span class=\"inv-name\">' + escapeHtml(item.ingredient_name) + '</span>' +
+                '<input class=\"inv-qty-edit\" type=\"number\" value=\"' + escapeHtml(String(item.quantity)) + '\" min=\"0\" step=\"0.1\" data-id=\"' + item.id + '\">' +
+                '<input class=\"inv-unit-edit\" value=\"' + escapeHtml(item.unit) + '\" data-id=\"' + item.id + '\">' +
                 '<button class=\"inv-save-btn\" data-id=\"' + item.id + '\">保存</button>' +
                 '<button class=\"inv-del-btn\" data-id=\"' + item.id + '\">删除</button>';
               el.appendChild(row);

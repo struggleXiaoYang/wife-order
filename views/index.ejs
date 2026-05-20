@@ -167,8 +167,8 @@
       <textarea class="chef-modal-input" id="chef-dish-steps" rows="3" placeholder="步骤（每行一步）"></textarea><br>
       <label class="chef-modal-check"><input type="checkbox" id="chef-dish-avail" checked> 上架</label>
       <div class="chef-modal-btns">
-        <button class="chef-btn-cancel" onclick="document.getElementById('chef-dish-modal').style.display='none'">取消</button>
-        <button class="chef-btn-save" onclick="chefSaveDish()">保存</button>
+        <button type="button" class="chef-btn-cancel" onclick="document.getElementById('chef-dish-modal').style.display='none'">取消</button>
+        <button type="button" class="chef-btn-save" onclick="chefSaveDish()">保存</button>
       </div>
     </div>
   </div>
@@ -629,7 +629,7 @@
       document.getElementById('chef-edit-id').value = id || '';
       document.getElementById('chef-modal-title').textContent = id ? '编辑菜品' : '添加菜品';
       if (id) {
-        var dishes = <%- JSON.stringify(chefData.dishes) %>;
+        var dishes = <%- JSON.stringify(chefData.dishes).replace(/<\//g, '<\\/') %>;
         var dish = dishes.find(function(d) { return d.id == id; });
         if (dish) {
           document.getElementById('chef-dish-name').value = dish.name || '';
@@ -1370,7 +1370,7 @@
                 shopCard.className = 'shop-card';
                 shopCard.innerHTML = '<h2 class=\"shop-title\">📋 今日采购清单</h2>'
                   + '<div class=\"shop-list\">'
-                  + data.shoppingList.map(function(it, i) { return '<span class=\"shop-item\">' + (i + 1) + '. ' + it + '</span>'; }).join('')
+                  + data.shoppingList.map(function(it, i) { return '<span class=\"shop-item\">' + (i + 1) + '. ' + escapeHtml(it) + '</span>'; }).join('')
                   + '</div>'
                   + '<button class=\"shop-close-btn\">知道了，去买菜 🛒</button>';
                 shopOverlay.appendChild(shopCard);
@@ -1583,7 +1583,7 @@
     card.className = 'shop-card';
     card.innerHTML = '<h2 class="shop-title">📋 今日采购清单</h2>'
       + '<div class="shop-list">'
-      + list.map(function(it, i) { return '<span class="shop-item">' + (i+1) + '. ' + it + '</span>'; }).join('')
+      + list.map(function(it, i) { return '<span class="shop-item">' + (i+1) + '. ' + escapeHtml(it) + '</span>'; }).join('')
       + '</div>'
       + '<button class="shop-close-btn">知道了，去买菜 🛒</button>';
     overlay.appendChild(card);

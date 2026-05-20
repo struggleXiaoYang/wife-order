@@ -1024,3 +1024,9 @@ body {
   .login-box { padding: 24px 16px; }
   .stats-grid { grid-template-columns: 1fr; }
 }
+
+/* 全局焦点环 (WCAG 2.1 AA) */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

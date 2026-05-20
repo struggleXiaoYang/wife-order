@@ -46,6 +46,11 @@
     var _currentPage = 1;
     var _searchTimer = null;
 
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
     function formatTime(iso) {
       var d = new Date(iso);
       var pad = function(n) { return n < 10 ? '0' + n : n; };
@@ -129,8 +134,8 @@
               var dishIds = order.dishIds || [];
               var remarks = order.remarks || [];
               for (var j = 0; j < dishNames.length; j++) {
-                var part = '<span class=\"history-dish-line\">' + dishNames[j];
-                if (remarks[j]) part += ' <span class=\"history-remark\">(' + remarks[j] + ')</span>';
+                var part = '<span class=\"history-dish-line\">' + escapeHtml(dishNames[j]);
+                if (remarks[j]) part += ' <span class=\"history-remark\">(' + escapeHtml(remarks[j]) + ')</span>';
                 if (order.status === 'completed') {
                   var rateKey = order.id + '_' + dishIds[j];
                   var existingRating = ratedMap[rateKey] || 0;
