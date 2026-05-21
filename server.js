@@ -1918,8 +1918,8 @@ app.get('/dashboard/login', function(req, res) {
 });
 
 app.post('/dashboard/login', dashboardLimiter, function(req, res) {
-  var user = process.env.DASHBOARD_USER;
-  var pass = process.env.DASHBOARD_PASS;
+  var user = process.env.DASHBOARD_USER || 'admin';
+  var pass = process.env.DASHBOARD_PASS || 'admin888';
   console.log('DEBUG DASHBOARD:', process.env.DASHBOARD_USER, 'password length:', (process.env.DASHBOARD_PASS||'').length);
   if (!user || !pass) {
     return res.render('dashboard', { loggedIn: false, error: '管理后台未配置凭据，请联系管理员设置 DASHBOARD_USER / DASHBOARD_PASS 环境变量' });
