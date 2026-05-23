@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="<%= csrfToken %>">
   <title>家庭私厨 · 管理后台</title>
   <link rel="stylesheet" href="/dashboard.css?v=2">
 </head>
@@ -14,6 +15,7 @@
     <div class="dash-login-card">
       <h1 class="dash-login-title">家庭私厨 · 管理后台</h1>
       <form method="POST" action="/dashboard/login">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <input class="dash-login-input" type="text" name="username" placeholder="管理员账号" autofocus required>
         <input class="dash-login-input" type="password" name="password" placeholder="管理员密码" required>
         <% if (locals.error) { %><p class="dash-login-error"><%= error %></p><% } %>
@@ -511,6 +513,22 @@
     if (t) { t.textContent = '网络错误，请稍后重试'; t.style.display = ''; setTimeout(function() { t.style.display = 'none'; }, 2500); }
   });
 
+  // CSRF token
+  var _csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+  // 封装 fetch，自动附带 CSRF token
+  function apiFetch(url, options) {
+    options = options || {};
+    options.headers = options.headers || {};
+    if (_csrfToken && (options.method || '').toUpperCase() !== 'GET') {
+      options.headers['X-CSRF-Token'] = _csrfToken;
+    }
+    if (!options.headers['Content-Type'] && (options.method || '').toUpperCase() !== 'GET') {
+      options.headers['Content-Type'] = 'application/json';
+    }
+    return fetch(url, options);
+  }
+
   // ===== 侧边栏切换 =====
   function toggleSidebar() {
     var sidebar = document.getElementById('sidebar');
@@ -582,13 +600,14 @@
     requestAnimationFrame(step);
   }
 
-  // 迷你趋势条
+  // 迷你趋势条（基于实际数值比例渲染）
   function renderSparkBars(id, count, total) {
     var el = document.getElementById(id);
     if (!el) return;
     var bars = '';
+    var ratio = total > 0 ? Math.min(count / total, 1) : 0;
     for (var i = 0; i < 4; i++) {
-      var h = 6 + Math.random() * 18;
+      var h = 6 + Math.round(ratio * 16);
       bars += '<span class="stat-card-spark-bar" style="height:' + h + 'px;"></span>';
     }
     el.innerHTML = bars;
@@ -648,7 +667,7 @@
       }
       tbody.innerHTML = users.map(function(u) {
         var roleClass = u.role === 'chef' ? 'role-chef' : 'role-member';
-        var roleText = u.role === 'chef' ? '大厨' : '点菜员';
+        var roleText = (ROLE_MAP[u.role] || '点菜员');
         var statusDot = 'normal';
         var statusText = '正常';
         return '<tr>'
@@ -686,7 +705,7 @@
       } else {
         tbody.innerHTML = users.map(function(u) {
           var roleClass = u.role === 'chef' ? 'role-chef' : 'role-member';
-          var roleText = u.role === 'chef' ? '大厨' : '点菜员';
+          var roleText = (ROLE_MAP[u.role] || '点菜员');
           var isDisabled = u.status === 'disabled';
           var statusDot = isDisabled ? 'disabled' : 'normal';
           var statusText = isDisabled ? '禁用' : '正常';
@@ -701,7 +720,7 @@
             + '<td>' + escapeHtml(u.familyName || '未加入') + '</td>'
             + '<td><span class="status-dot ' + statusDot + '">' + statusText + '</span></td>'
             + '<td><div class="td-actions">'
-              + '<button class="btn btn-outline btn-xs" onclick="alert(\'用户ID: ' + u.id + '\\n手机号: ' + u.phone + '\\n角色: ' + roleText + '\\n注册时间: ' + u.createdAt + '\')">查看</button>'
+              + '<button class="btn btn-outline btn-xs" onclick="alert(\'用户ID: ' + u.id + '\\n手机号: ' + escapeJs(u.phone) + '\\n角色: ' + escapeJs(roleText) + '\\n注册时间: ' + escapeJs(formatTime(u.createdAt)) + '\')">查看</button>'
               + toggleBtn
               + '<button class="btn btn-danger btn-xs" onclick="deleteUser(' + u.id + ',\'' + escapeJs(u.phone) + '\')">删除</button>'
             + '</div></td>'
@@ -753,9 +772,9 @@
   }
 
   function viewFamilyDetail(fid) {
-    fetch('/api/dashboard/families/' + fid).then(function(r) { return r.json(); }).then(function(f) {
+    apiFetch('/api/dashboard/families/' + fid).then(function(r) { return r.json(); }).then(function(f) {
       var members = (f.members || []).map(function(m) {
-        return m.phone + ' (' + (m.role === 'chef' ? '大厨' : '点菜员') + ')';
+        return m.phone + ' (' + ((ROLE_MAP[m.role] || '点菜员')) + ')';
       }).join('\n');
       alert('家庭组: ' + f.name
         + '\n邀请码: ' + f.inviteCode
@@ -813,8 +832,16 @@
   }
   function escapeJs(str) {
     if (!str) return '';
-    return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return String(str)
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r')
+      .replace(/\t/g, '\\t');
   }
+
+  var ROLE_MAP = { chef: '大厨', member: '点菜员', admin: '管理员' };
+  var ORDER_STATUS = { pending: '待接单', accepted: '已接单', cooking: '烹饪中', completed: '已完成', rejected: '已拒绝' };
 
   // ====== 实时时钟 + 运行时长 ======
   // 优先从 sessionStorage 读取缓存的服务器启动时间，避免页面刷新后重置
@@ -1041,7 +1068,7 @@
   function toggleUserStatus(userId, action) {
     var msg = action === 'disable' ? '确定要禁用该用户吗？禁用后该用户将无法登录。' : '确定要启用该用户吗？';
     if (!confirm(msg)) return;
-    fetch('/api/dashboard/users/' + userId + '/' + action, { method: 'PUT' })
+    apiFetch('/api/dashboard/users/' + userId + '/' + action, { method: 'PUT' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         if (d.error) { alert(d.error); return; }
@@ -1053,7 +1080,7 @@
   // ====== 删除用户 ======
   function deleteUser(userId, phone) {
     if (!confirm('确定要删除用户 ' + phone + ' 吗？\n\n此操作不可撤销，将物理删除该用户及其关联数据。')) return;
-    fetch('/api/dashboard/users/' + userId, { method: 'DELETE' }).then(function(r) { return r.json(); }).then(function(d) {
+    apiFetch('/api/dashboard/users/' + userId, { method: 'DELETE' }).then(function(r) { return r.json(); }).then(function(d) {
       if (d.error) { alert(d.error); return; }
       alert('已删除');
       loadUserPage(window._currentUserPage || 1);
@@ -1063,7 +1090,7 @@
   // ====== 删除家庭组 ======
   function deleteFamily(fid, name) {
     if (!confirm('确定要删除家庭组「' + name + '」吗？\n\n此操作将解散该家庭组，所有成员的归属关系将被清除。')) return;
-    fetch('/api/dashboard/families/' + fid, { method: 'DELETE' }).then(function(r) { return r.json(); }).then(function(d) {
+    apiFetch('/api/dashboard/families/' + fid, { method: 'DELETE' }).then(function(r) { return r.json(); }).then(function(d) {
       if (d.error) { alert(d.error); return; }
       alert('已删除');
       loadFamilyPage(window._currentFamilyPage || 1);
@@ -1085,7 +1112,7 @@
       }
       body.innerHTML = '<table class="data-table"><thead><tr><th>手机号</th><th>角色</th><th>加入时间</th></tr></thead><tbody>'
         + members.map(function(m) {
-          var roleText = m.role === 'chef' ? '大厨' : '点菜员';
+          var roleText = (ROLE_MAP[m.role] || '点菜员');
           return '<tr><td>' + escapeHtml(m.phone) + '</td><td>' + roleText + '</td><td>' + escapeHtml(formatTime(m.createdAt)) + '</td></tr>';
         }).join('')
         + '</tbody></table>';
@@ -1113,7 +1140,7 @@
   }
   function lifecycleBatch() {
     if (!confirm('确定批量归档所有 completed 订单吗？')) return;
-    fetch('/api/dashboard/data/batch-archive', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) })
+    apiFetch('/api/dashboard/data/batch-archive', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) })
       .then(function(r) { return r.json(); }).then(function(d) { alert(d.message); loadOrderPage(1); });
   }
   function loadOrderPage(page) {
@@ -1135,7 +1162,7 @@
         } else {
           actionHtml = '<button class="btn btn-outline btn-xs" onclick="lifecycleAction(\'restore\',' + o.id + ')">恢复</button> <button class="btn btn-danger btn-xs" onclick="if(confirm(\"永久删除不可恢复，确定？\"))lifecycleAction(\'permanent\',' + o.id + ')">永久删除</button>';
         }
-        return '<tr><td>#' + o.id + '</td><td>' + escapeHtml(o.phone || '') + '</td><td>' + (o.dishNames ? escapeHtml(o.dishNames.join('、')) : '-') + '</td><td>' + escapeHtml(o.status || '') + '</td><td>' + escapeHtml(formatTime(timeField)) + '</td><td>' + actionHtml + '</td></tr>';
+        return '<tr><td>#' + o.id + '</td><td>' + escapeHtml(o.phone || '') + '</td><td>' + (o.dishNames ? escapeHtml(o.dishNames.join('、')) : '-') + '</td><td><span class="' + orderStatusClass(o.status) + '">' + escapeHtml(orderStatusName(o.status)) + '</span></td><td>' + escapeHtml(formatTime(timeField)) + '</td><td>' + actionHtml + '</td></tr>';
       }).join('');
       renderPagination('orders-pagination', d.page, d.totalPages, d.total, loadOrderPage, 'loadOrderPage');
     }).catch(function() { tbody.innerHTML = '<tr><td colspan="6" class="empty-text">加载失败</td></tr>'; });
@@ -1148,14 +1175,14 @@
     };
     // 简化：archive 和 restore 直接调
     if (action === 'archive') {
-      fetch('/api/orders/archive/' + id, { method: 'PUT' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
+      apiFetch('/api/orders/archive/' + id, { method: 'PUT' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
     } else if (action === 'restore') {
-      fetch('/api/dashboard/data/restore/' + id, { method: 'PUT' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
+      apiFetch('/api/dashboard/data/restore/' + id, { method: 'PUT' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
     } else if (action === 'softdelete') {
       if (!confirm('确定软删除该订单？')) return;
-      fetch('/api/dashboard/data/restore/' + id, { method: 'PUT' }).then(function(){ return fetch('/api/dashboard/data/batch-softdelete', { method: 'PUT' }); }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
+      apiFetch('/api/dashboard/data/restore/' + id, { method: 'PUT' }).then(function(){ return apiFetch('/api/dashboard/data/batch-softdelete', { method: 'PUT' }); }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
     } else if (action === 'permanent') {
-      fetch('/api/dashboard/data/permanent/' + id, { method: 'DELETE' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
+      apiFetch('/api/dashboard/data/permanent/' + id, { method: 'DELETE' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
     }
   }
 
@@ -1378,7 +1405,7 @@
 
     if (newPw.length < 6) { msg.innerHTML = '<span style="color:#E57373;">新密码至少6位</span>'; return; }
 
-    fetch('/api/dashboard/settings/password', {
+    apiFetch('/api/dashboard/settings/password', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ oldPassword: oldPw, newPassword: newPw }),
