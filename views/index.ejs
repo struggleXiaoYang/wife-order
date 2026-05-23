@@ -194,6 +194,7 @@
     // === 订单看板：动态加载 ===
     var _chefOrderPage = 1;
     var _chefSearchTimer = null;
+    var _chefLocalAction = null; // 正在本地操作中，跳过 Socket.IO 全量刷新
 
     function chefLoadOrders(page) {
       page = page || _chefOrderPage;
@@ -409,20 +410,22 @@
       var card = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
       if (!card) return;
       card.style.pointerEvents = 'none';
+      _chefLocalAction = orderId; // 标记本地操作，阻止 Socket.IO 全量刷新
 
       var targetStatus = { accept: 'accepted', cook: 'cooking', complete: 'completed' }[action];
-      if (!targetStatus) { card.style.pointerEvents = ''; return; }
+      if (!targetStatus) { card.style.pointerEvents = ''; _chefLocalAction = null; return; }
 
       fetch('/api/family/orders/' + orderId + '/' + action, { method: 'PUT' })
         .then(function(r) { return r.json(); })
         .then(function(r) {
-          if (!r.success) { card.style.pointerEvents = ''; chefShowError(); return; }
+          if (!r.success) { card.style.pointerEvents = ''; _chefLocalAction = null; chefShowError(); return; }
           var targetList = getChefOrderList(targetStatus);
-          if (!targetList) { card.style.pointerEvents = ''; return; }
+          if (!targetList) { card.style.pointerEvents = ''; _chefLocalAction = null; return; }
           var fromList = card.closest('.chef-order-list');
           landCard(card, targetList, fromList, orderId, targetStatus, false, '');
+          _chefLocalAction = null;
         })
-        .catch(function() { card.style.pointerEvents = ''; chefShowError(); });
+        .catch(function() { card.style.pointerEvents = ''; _chefLocalAction = null; chefShowError(); });
     }
 
     function chefReject(orderId) {
@@ -432,6 +435,7 @@
       var card = document.querySelector('.chef-order-card[data-id="' + orderId + '"]');
       if (!card) return;
       card.style.pointerEvents = 'none';
+      _chefLocalAction = orderId;
 
       fetch('/api/family/orders/' + orderId + '/reject', {
         method: 'PUT',
@@ -439,13 +443,14 @@
         body: JSON.stringify({ reason: reason.trim() }),
       }).then(function(r) { return r.json(); })
         .then(function(r) {
-          if (!r.success) { card.style.pointerEvents = ''; chefShowError(); return; }
+          if (!r.success) { card.style.pointerEvents = ''; _chefLocalAction = null; chefShowError(); return; }
           var targetList = getChefOrderList('rejected');
-          if (!targetList) { card.style.pointerEvents = ''; return; }
+          if (!targetList) { card.style.pointerEvents = ''; _chefLocalAction = null; return; }
           var fromList = card.closest('.chef-order-list');
           landCard(card, targetList, fromList, orderId, 'rejected', true, reason.trim());
+          _chefLocalAction = null;
         })
-        .catch(function() { card.style.pointerEvents = ''; chefShowError(); });
+        .catch(function() { card.style.pointerEvents = ''; _chefLocalAction = null; chefShowError(); });
     }
 
     // === 快速归档（单条 + 批量） ===
@@ -456,18 +461,20 @@
       card.style.opacity = '0';
       card.style.transform = 'scale(0.98)';
       card.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
+      _chefLocalAction = orderId;
 
       fetch('/api/orders/archive/' + orderId, { method: 'PUT' })
         .then(function(r) { return r.json(); })
         .then(function(r) {
-          if (!r.success) { card.style.opacity = ''; card.style.transform = ''; card.style.pointerEvents = ''; chefShowError(); return; }
+          if (!r.success) { card.style.opacity = ''; card.style.transform = ''; card.style.pointerEvents = ''; _chefLocalAction = null; chefShowError(); return; }
           setTimeout(function() {
             var list = card.closest('.chef-order-list');
             card.remove();
             if (list) ensureEmptyPlaceholder(list);
+            _chefLocalAction = null;
           }, 160);
         })
-        .catch(function() { card.style.opacity = ''; card.style.transform = ''; card.style.pointerEvents = ''; chefShowError(); });
+        .catch(function() { card.style.opacity = ''; card.style.transform = ''; card.style.pointerEvents = ''; _chefLocalAction = null; chefShowError(); });
     }
 
     function archiveBatch(status) {
@@ -1666,9 +1673,10 @@
       if (fgId) socket.emit('join', fgId);
     });
     socket.on('order_update', function() {
-      // 订单状态变更 → 刷新状态条
       checkKitchenStatus();
-      // 如果当前在历史页或大厨面板，刷新列表
+      // 本地操作（接单/烹饪/完成/拒单）已通过 landCard 增量更新 DOM，
+      // 跳过 Socket.IO 触发的全量刷新，避免覆盖本地卡片移动
+      if (_chefLocalAction) return;
       if (typeof chefLoadOrders === 'function' && document.getElementById('panel-orders') && document.getElementById('panel-orders').style.display !== 'none') {
         chefLoadOrders((typeof _chefOrderPage !== 'undefined') ? _chefOrderPage : 1);
       }
@@ -1678,6 +1686,7 @@
     });
     socket.on('new_order', function() {
       checkKitchenStatus();
+      if (_chefLocalAction) return;
       if (typeof chefLoadOrders === 'function') chefLoadOrders(1);
     });
     socket.on('disconnect', function() { _socketConnected = false; });
