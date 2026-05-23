@@ -514,7 +514,8 @@
   });
 
   // CSRF token
-  var _csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  var _csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  var _csrfToken = _csrfMeta ? _csrfMeta.getAttribute('content') : '';
 
   // 封装 fetch，自动附带 CSRF token
   function apiFetch(url, options) {
