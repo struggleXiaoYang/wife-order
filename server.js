@@ -2307,10 +2307,13 @@ app.get('/api/dashboard/users', requireDashboard, dashboardApiLimiter, async fun
     );
 
     params.push(limit, offset);
-    var [rows] = await pool.execute(
-      'SELECT u.id, u.phone, u.role, u.status, u.created_at, f.name AS family_name FROM users u LEFT JOIN family_groups f ON u.family_group_id = f.id ' + whereClause + ' ORDER BY u.created_at DESC LIMIT ? OFFSET ?',
-      params
-    );
+    var dataSql = 'SELECT u.id, u.phone, u.role, u.status, u.created_at, f.name AS family_name FROM users u LEFT JOIN family_groups f ON u.family_group_id = f.id ' + whereClause + ' ORDER BY u.created_at DESC LIMIT ? OFFSET ?';
+    try {
+      var [rows] = await pool.execute(dataSql, params);
+    } catch (sqlErr) {
+      console.error('/api/dashboard/users SQL error:', sqlErr.message, '| SQL:', dataSql, '| params:', JSON.stringify(params));
+      throw sqlErr;
+    }
 
     res.json({
       users: rows.map(function(r) {
