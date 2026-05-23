@@ -1953,28 +1953,10 @@ const PORT = process.env.PORT || 3000;
 var server = http.createServer(app);
 var io = new Server(server);
 
-io.use(function(socket, next) {
-  sessionMiddleware(socket.request, {}, next);
-});
-io.use(function(socket, next) {
-  var req = socket.request;
-  if (req.session && req.session.userId) {
-    socket.userId = req.session.userId;
-    socket.userRole = req.session.userRole;
-    socket.familyGroupId = req.session.familyGroupId;
-    return next();
-  }
-  next(new Error('未登录'));
-});
+// Socket.IO — 按 family_group_id 分配房间
 io.on('connection', function(socket) {
-  socket.on('join', async function(familyGroupId) {
-    if (!familyGroupId || !socket.userId) return;
-    try {
-      var [[row]] = await pool.execute('SELECT family_group_id FROM users WHERE id = ?', [socket.userId]);
-      if (row && String(row.family_group_id) === String(familyGroupId)) {
-        socket.join('fg_' + familyGroupId);
-      }
-    } catch (_) {}
+  socket.on('join', function(familyGroupId) {
+    if (familyGroupId) socket.join('fg_' + familyGroupId);
   });
 });
 
