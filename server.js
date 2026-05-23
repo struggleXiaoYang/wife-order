@@ -27,8 +27,10 @@ const upload = multer({
     },
   }),
   fileFilter: function(req, file, cb) {
-    var allowed = /\.(jpg|jpeg|png|gif)$/i.test(path.extname(file.originalname));
-    cb(null, allowed);
+    var ext = path.extname(file.originalname).toLowerCase();
+    var allowedExt = /\.(jpg|jpeg|png|gif)$/i.test(ext);
+    var allowedMime = ['image/jpeg','image/png','image/gif'].includes(file.mimetype);
+    cb(null, allowedExt && allowedMime);
   },
   limits: { fileSize: 5 * 1024 * 1024 },
 });
@@ -227,13 +229,15 @@ var loginLimiter = rateLimit({ windowMs: 60000, max: 10, message: { error: '请�
 var registerLimiter = rateLimit({ windowMs: 60000, max: 5, message: { error: '请求过于频繁，请稍后重试' } });
 var dashboardLimiter = rateLimit({ windowMs: 60000, max: 5, message: { error: '请求过于频繁，请稍后重试' } });
 var dashboardApiLimiter = rateLimit({ windowMs: 60000, max: 30, message: { error: '请求过于频繁，请稍后重试' } });
+var forgotPasswordLimiter = rateLimit({ windowMs: 60000, max: 3, message: { success: false, message: '请求过于频繁，请稍后重试' } });
+var bindApplyLimiter = rateLimit({ windowMs: 60000, max: 5, message: { error: '请求过于频繁，请稍后重试' } });
 var smsLimiter = rateLimit({ windowMs: 60000, max: 1, message: { success: false, message: '请求过于频繁，请稍后重试' } });
 // 会话安全：SECRET 必须由环境变量提供，不允许硬编码兜底
 if (!process.env.SESSION_SECRET) {
   console.error('致命错误：缺少 SESSION_SECRET 环境变量，服务拒绝启动');
   process.exit(1);
 }
-app.use(session({
+var sessionMiddleware = session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
@@ -244,7 +248,8 @@ app.use(session({
     httpOnly: true,
   },
   rolling: true,
-}));
+});
+app.use(sessionMiddleware);
 
 // CSRF 防护中间件
 app.use(function(req, res, next) {
@@ -300,6 +305,13 @@ async function requireAuth(req, res, next) {
   next();
 }
 
+function requireChef(req, res, next) {
+  if (req.session.userRole !== 'chef') {
+    return res.status(403).json({ error: '仅大厨可执行此操作' });
+  }
+  next();
+}
+
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
@@ -339,7 +351,7 @@ app.post('/api/sendSms', smsLimiter, async (req, res) => {
 
     // 调用互亿无线发送（测试模式跳过）
     if (process.env.TEST_SKIP_SMS === 'true') {
-      console.log('[测试] 跳过短信发送，验证码：' + (code ? code[0]+'***'+code[5] : '***') + ' 手机号：' + (phone ? phone.substring(0,3)+'****'+phone.substring(7) : '***'));
+      console.log('[测试] 跳过短信发送，验证码长度:' + (code ? code.length : 0) + ' 手机尾号:' + (phone ? '****' + phone.slice(-4) : '***'));
     } else {
       var smsResult = await sendSms(phone, code);
       if (!smsResult.success) {
@@ -370,30 +382,39 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     if (!phone || !/^1\d{10}$/.test(phone)) {
       return res.json({ success: false, message: '手机号格式错误，请输入11位以1开头的手机号' });
     }
-    if (!password || password.length < 1) {
-      return res.json({ success: false, message: '密码不能为空' });
+    if (!password || password.length < 6) {
+      return res.json({ success: false, message: '密码至少需要6位' });
     }
     if (!code || code.length !== 6) {
       return res.json({ success: false, message: '请输入6位验证码' });
     }
 
-    // 校验验证码
-    const [codeRows] = await pool.execute(
-      'SELECT id, code FROM sms_codes WHERE phone = ? AND used = 0 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
-      [phone]
-    );
-    if (codeRows.length === 0) {
-      return res.json({ success: false, message: '验证码错误或已过期' });
+    // 校验验证码（事务 + FOR UPDATE 防止并发 race）
+    var smsConn = await pool.getConnection();
+    try {
+      await smsConn.beginTransaction();
+      const [codeRows] = await smsConn.execute(
+        'SELECT id, code FROM sms_codes WHERE phone = ? AND used = 0 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
+        [phone]
+      );
+      if (codeRows.length === 0) {
+        await smsConn.rollback();
+        smsConn.release();
+        return res.json({ success: false, message: '验证码错误或已过期' });
+      }
+      if (codeRows[0].code !== code) {
+        await smsConn.rollback();
+        smsConn.release();
+        return res.json({ success: false, message: '验证码错误或已过期' });
+      }
+      await smsConn.execute('UPDATE sms_codes SET used = 1 WHERE id = ?', [codeRows[0].id]);
+      await smsConn.commit();
+      smsConn.release();
+    } catch (e) {
+      await smsConn.rollback().catch(() => {});
+      smsConn.release();
+      throw e;
     }
-    if (codeRows[0].code !== code) {
-      return res.json({ success: false, message: '验证码错误或已过期' });
-    }
-
-    // 标记验证码已使用
-    await pool.execute(
-      'UPDATE sms_codes SET used = 1 WHERE id = ?',
-      [codeRows[0].id]
-    );
 
     const [rows] = await pool.execute(
       'SELECT id FROM users WHERE phone = ?',
@@ -428,9 +449,10 @@ app.post('/api/register', registerLimiter, async (req, res) => {
 
       // chef 注册（无邀请码）→ 自动创建家庭组 + 默认数据
       if (!inviteCodeTrim) {
+        var randomCode = crypto.randomBytes(4).toString('hex').toUpperCase();
         var [fgResult] = await conn.execute(
           'INSERT INTO family_groups (owner_id, name, invite_code, created_at) VALUES (?, ?, ?, NOW())',
-          [userId, '我们的家', phone]
+          [userId, '我们的家', randomCode]
         );
         familyGroupId = fgResult.insertId;
         await conn.execute('UPDATE users SET family_group_id = ? WHERE id = ?', [familyGroupId, userId]);
@@ -642,12 +664,8 @@ app.get('/', async (req, res) => {
 // ========== 菜单数据（分类列表） ==========
 app.get('/api/menu', requireAuth, async (req, res) => {
   try {
-    var scopeCol = req.scopeColumn || 'user_id';
-    var scopeVal = req.scopeValue || req.session.userId;
-    var userId = req.session.userId;
-    var [[fgUser]] = await pool.execute('SELECT family_group_id FROM users WHERE id = ?', [userId]);
-    var scCol = fgUser.family_group_id ? 'family_group_id' : 'user_id';
-    var scVal = fgUser.family_group_id || userId;
+    var scCol = req.scopeColumn || 'user_id';
+    var scVal = req.scopeValue || req.session.userId;
     // 缓存：key 按 scope 区分
     var cacheKey = 'menu_' + scVal;
     var cached = cacheService.get(cacheKey);
@@ -824,9 +842,16 @@ app.get('/api/orders', requireAuth, async (req, res) => {
     var days = parseInt(req.query.days, 10) || 0;
     var search = sanitizeSearch(req.query.search, 100);
 
-    // 构建 WHERE 条件
-    var where = 'WHERE o.' + scCol + ' = ? AND o.deleted_at IS NULL';
-    var params = [scVal];
+    // 构建 WHERE 条件：若有家庭组，同时包含加入前的个人订单
+    var where;
+    var params = [];
+    if (fgUser.family_group_id) {
+      where = 'WHERE (o.family_group_id = ? OR (o.user_id = ? AND o.family_group_id IS NULL)) AND o.deleted_at IS NULL';
+      params = [fgUser.family_group_id, userId];
+    } else {
+      where = 'WHERE o.user_id = ? AND o.deleted_at IS NULL';
+      params = [userId];
+    }
 
     if (days > 0) {
       where += ' AND o.created_at >= DATE_SUB(NOW(), INTERVAL ' + days + ' DAY)';
@@ -921,9 +946,10 @@ app.post('/api/inventory', requireAuth, async (req, res) => {
     var userId = req.session.userId;
     var name = (req.body.ingredient_name || '').trim();
     if (!name) return res.json({ success: false, message: '食材名不能为空' });
+    var fgId = (scopeCol === 'family_group_id') ? scopeVal : null;
     await pool.execute(
-      'INSERT INTO inventory (user_id, ingredient_name, quantity, unit) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)',
-      [userId, name, parseFloat(req.body.quantity) || 0, req.body.unit || '份']
+      'INSERT INTO inventory (user_id, ingredient_name, family_group_id, quantity, unit) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)',
+      [userId, name.slice(0, 100), fgId, parseFloat(req.body.quantity) || 0, req.body.unit || '份']
     );
     res.json({ success: true });
   } catch (err) {
@@ -1084,12 +1110,12 @@ app.get('/api/bind/status', requireAuth, async function(req, res) {
   }
 });
 
-app.post('/api/bind/apply', requireAuth, async function(req, res) {
+app.post('/api/bind/apply', requireAuth, bindApplyLimiter, async function(req, res) {
   try {
     var userId = req.session.userId;
     var phone = (req.body.phone || '').trim();
 
-    console.log('[bind/apply] 绑定申请手机号:', phone ? phone.substring(0,3)+'****'+phone.substring(7) : '***');
+    console.log('[bind/apply] 绑定申请手机号:', phone ? '****' + phone.slice(-4) : '***');
 
     if (!phone || !/^1\d{10}$/.test(phone)) {
       return res.json({ success: false, message: '请输入正确的手机号' });
@@ -1124,52 +1150,10 @@ app.post('/api/bind/apply', requireAuth, async function(req, res) {
     }
 
     await pool.execute('INSERT INTO bind_requests (applicant_id, target_phone) VALUES (?, ?)', [userId, phone]);
-    console.log('[bind/apply] 绑定申请已写入，applicant:', userId, 'target_phone:', phone ? phone.substring(0,3)+'****'+phone.substring(7) : '***');
+    console.log('[bind/apply] 绑定申请已写入，applicant:', userId, 'target_phone:', phone ? '****' + phone.slice(-4) : '***');
     res.json({ success: true, message: '申请已提交，等待大厨确认' });
   } catch (err) {
     console.error('/api/bind/apply error:', err);
-    res.status(500).json({ error: '服务器错误' });
-  }
-});
-
-app.post('/api/bind/confirm', requireAuth, async function(req, res) {
-  try {
-    var userId = req.session.userId;
-    var code = (req.body.code || '').trim();
-
-    if (!code || code.length !== 6) {
-      return res.json({ success: false, message: '请输入6位验证码' });
-    }
-
-    var [[reqRow]] = await pool.execute(
-      'SELECT id, target_phone, code AS stored_code FROM bind_requests WHERE applicant_id = ? AND status = ? ORDER BY created_at DESC LIMIT 1',
-      [userId, 'generated']
-    );
-    if (!reqRow) {
-      return res.json({ success: false, message: '未找到待验证的绑定申请' });
-    }
-    if (reqRow.stored_code !== code) {
-      return res.json({ success: false, message: '验证码错误' });
-    }
-
-    var [[target]] = await pool.execute('SELECT family_group_id FROM users WHERE phone = ?', [reqRow.target_phone]);
-
-    var conn = await pool.getConnection();
-    await conn.beginTransaction();
-    try {
-      await conn.execute('UPDATE users SET family_group_id = ? WHERE id = ?', [target.family_group_id, userId]);
-      await conn.execute('UPDATE bind_requests SET status = ? WHERE id = ?', ['approved', reqRow.id]);
-      await conn.commit();
-      conn.release();
-      req.session.familyGroupId = target.family_group_id;
-      res.json({ success: true, message: '绑定成功' });
-    } catch (err) {
-      await conn.rollback();
-      conn.release();
-      throw err;
-    }
-  } catch (err) {
-    console.error('/api/bind/confirm error:', err);
     res.status(500).json({ error: '服务器错误' });
   }
 });
@@ -1236,7 +1220,7 @@ app.put('/api/family/bind/approve', requireAuth, async function(req, res) {
       return res.json({ success: false, message: '申请不存在或已处理' });
     }
     var reqRow = reqRows[0];
-    console.log('[bind/approve] 申请 target_phone:', reqRow.target_phone ? reqRow.target_phone.substring(0,3)+'****'+reqRow.target_phone.substring(7) : '***');
+    console.log('[bind/approve] 申请 target_phone:', reqRow.target_phone ? '****' + reqRow.target_phone.slice(-4) : '***');
 
     // 权限校验：target_phone 必须等于大厨手机号
     if (reqRow.target_phone !== chefPhone) {
@@ -1355,7 +1339,7 @@ app.get('/forgot-password', function(req, res) {
   res.render('forgot-password', { error: '' });
 });
 
-app.post('/api/forgot-password/send-code', async function(req, res) {
+app.post('/api/forgot-password/send-code', forgotPasswordLimiter, async function(req, res) {
   try {
     var phone = (req.body.phone || '').trim();
     if (!phone || !/^1\d{10}$/.test(phone)) {
@@ -1365,7 +1349,7 @@ app.post('/api/forgot-password/send-code', async function(req, res) {
     // 手机号必须已注册
     var [userRows] = await pool.execute('SELECT id FROM users WHERE phone = ?', [phone]);
     if (userRows.length === 0) {
-      return res.json({ success: false, message: '该手机号未注册' });
+      return res.json({ success: true, message: '验证码已发送' });
     }
 
     // 60秒冷却
@@ -1393,7 +1377,7 @@ app.post('/api/forgot-password/send-code', async function(req, res) {
     var code = String(Math.floor(Math.random() * 900000 + 100000));
 
     if (process.env.TEST_SKIP_SMS === 'true') {
-      console.log('[测试] 忘记密码验证码：' + (code ? code[0]+'***'+code[5] : '***') + ' 手机号：' + (phone ? phone.substring(0,3)+'****'+phone.substring(7) : '***'));
+      console.log('[测试] 忘记密码验证码长度:' + (code ? code.length : 0) + ' 手机尾号:' + (phone ? '****' + phone.slice(-4) : '***'));
     } else {
       var smsResult = await sendSms(phone, code);
       if (!smsResult.success) {
@@ -1413,7 +1397,7 @@ app.post('/api/forgot-password/send-code', async function(req, res) {
   }
 });
 
-app.post('/api/forgot-password/reset', async function(req, res) {
+app.post('/api/forgot-password/reset', forgotPasswordLimiter, async function(req, res) {
   try {
     var phone = (req.body.phone || '').trim();
     var code = (req.body.code || '').trim();
@@ -1429,20 +1413,32 @@ app.post('/api/forgot-password/reset', async function(req, res) {
       return res.json({ success: false, message: '新密码至少6位' });
     }
 
-    // 校验验证码
-    var [codeRows] = await pool.execute(
-      'SELECT id, code FROM sms_codes WHERE phone = ? AND used = 0 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
-      [phone]
-    );
-    if (codeRows.length === 0) {
-      return res.json({ success: false, message: '验证码错误或已过期' });
+    // 校验验证码（事务 + FOR UPDATE 防止并发 race）
+    var smsConn = await pool.getConnection();
+    try {
+      await smsConn.beginTransaction();
+      var [codeRows] = await smsConn.execute(
+        'SELECT id, code FROM sms_codes WHERE phone = ? AND used = 0 AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
+        [phone]
+      );
+      if (codeRows.length === 0) {
+        await smsConn.rollback();
+        smsConn.release();
+        return res.json({ success: false, message: '验证码错误或已过期' });
+      }
+      if (codeRows[0].code !== code) {
+        await smsConn.rollback();
+        smsConn.release();
+        return res.json({ success: false, message: '验证码错误或已过期' });
+      }
+      await smsConn.execute('UPDATE sms_codes SET used = 1 WHERE id = ?', [codeRows[0].id]);
+      await smsConn.commit();
+      smsConn.release();
+    } catch (e) {
+      await smsConn.rollback().catch(() => {});
+      smsConn.release();
+      throw e;
     }
-    if (codeRows[0].code !== code) {
-      return res.json({ success: false, message: '验证码错误或已过期' });
-    }
-
-    // 标记验证码已使用
-    await pool.execute('UPDATE sms_codes SET used = 1 WHERE id = ?', [codeRows[0].id]);
 
     // 更新密码
     var password_hash = await bcrypt.hash(password, 10);
@@ -1469,7 +1465,7 @@ app.get('/api/family/orders', requireAuth, async (req, res) => {
     var userId = req.session.userId;
 
     var page = parseInt(req.query.page, 10) || 1;
-    var limit = parseInt(req.query.limit, 10) || 10;
+    var limit = Math.min(parseInt(req.query.limit, 10) || 10, 100);
     var offset = (page - 1) * limit;
     var days = parseInt(req.query.days, 10) || 0;
     var search = sanitizeSearch(req.query.search, 100);
@@ -1534,7 +1530,7 @@ app.get('/api/family/orders', requireAuth, async (req, res) => {
   }
 });
 
-app.put('/api/family/orders/:id/accept', requireAuth, async (req, res) => {
+app.put('/api/family/orders/:id/accept', requireAuth, requireChef, async (req, res) => {
   try {
     var scopeCol = req.scopeColumn || 'user_id';
     var scopeVal = req.scopeValue || req.session.userId;
@@ -1555,7 +1551,7 @@ app.put('/api/family/orders/:id/accept', requireAuth, async (req, res) => {
   }
 });
 
-app.put('/api/family/orders/:id/reject', requireAuth, async (req, res) => {
+app.put('/api/family/orders/:id/reject', requireAuth, requireChef, async (req, res) => {
   try {
     var scopeCol = req.scopeColumn || 'user_id';
     var scopeVal = req.scopeValue || req.session.userId;
@@ -1576,7 +1572,7 @@ app.put('/api/family/orders/:id/reject', requireAuth, async (req, res) => {
   }
 });
 
-app.put('/api/family/orders/:id/cook', requireAuth, async (req, res) => {
+app.put('/api/family/orders/:id/cook', requireAuth, requireChef, async (req, res) => {
   try {
     var scopeCol = req.scopeColumn || 'user_id';
     var scopeVal = req.scopeValue || req.session.userId;
@@ -1597,7 +1593,7 @@ app.put('/api/family/orders/:id/cook', requireAuth, async (req, res) => {
   }
 });
 
-app.put('/api/family/orders/:id/complete', requireAuth, async (req, res) => {
+app.put('/api/family/orders/:id/complete', requireAuth, requireChef, async (req, res) => {
   try {
     var scopeCol = req.scopeColumn || 'user_id';
     var scopeVal = req.scopeValue || req.session.userId;
@@ -1618,7 +1614,7 @@ app.put('/api/family/orders/:id/complete', requireAuth, async (req, res) => {
   }
 });
 
-app.delete('/api/family/orders/:id', requireAuth, async (req, res) => {
+app.delete('/api/family/orders/:id', requireAuth, requireChef, async (req, res) => {
   try {
     var scopeCol = req.scopeColumn || 'user_id';
     var scopeVal = req.scopeValue || req.session.userId;
@@ -1752,9 +1748,10 @@ app.post('/api/family/dishes', requireAuth, upload.single('image'), async (req, 
     }
 
     const isAvailable = req.body.isAvailable === true || req.body.isAvailable === 'true';
+    var fgId = (scopeCol === 'family_group_id') ? scopeVal : null;
     const [result] = await pool.execute(
-      'INSERT INTO dishes (name, category_id, image, ingredients, steps, is_available, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [req.body.name || '', categoryId, imageVal, JSON.stringify(ingredients || []), JSON.stringify(steps || []), isAvailable ? 1 : 0, userId]
+      'INSERT INTO dishes (name, category_id, image, ingredients, steps, is_available, user_id, family_group_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [(req.body.name || '').trim().slice(0, 100), categoryId, imageVal, JSON.stringify(ingredients || []), JSON.stringify(steps || []), isAvailable ? 1 : 0, userId, fgId]
     );
 
     invalidateCache(scopeVal);
@@ -1762,7 +1759,7 @@ app.post('/api/family/dishes', requireAuth, upload.single('image'), async (req, 
       success: true,
       dish: {
         id: result.insertId,
-        name: req.body.name || '',
+        name: (req.body.name || '').trim().slice(0, 100),
         category: categoryName,
         image: imageVal,
         ingredients: ingredients || [],
@@ -1889,9 +1886,10 @@ app.post('/api/family/categories', requireAuth, async (req, res) => {
     );
     if (existing.length > 0) return res.status(400).json({ error: '分类已存在' });
 
+    var fgId = (scopeCol === 'family_group_id') ? scopeVal : null;
     await pool.execute(
-      'INSERT INTO categories (name, user_id) VALUES (?, ?)',
-      [name, userId]
+      'INSERT INTO categories (name, user_id, family_group_id) VALUES (?, ?, ?)',
+      [name, userId, fgId]
     );
     res.json({ success: true });
   } catch (err) {
@@ -1968,10 +1966,28 @@ const PORT = process.env.PORT || 3000;
 var server = http.createServer(app);
 var io = new Server(server);
 
-// Socket.IO — 按 family_group_id 分配房间
+io.use(function(socket, next) {
+  sessionMiddleware(socket.request, {}, next);
+});
+io.use(function(socket, next) {
+  var req = socket.request;
+  if (req.session && req.session.userId) {
+    socket.userId = req.session.userId;
+    socket.userRole = req.session.userRole;
+    socket.familyGroupId = req.session.familyGroupId;
+    return next();
+  }
+  next(new Error('未登录'));
+});
 io.on('connection', function(socket) {
-  socket.on('join', function(familyGroupId) {
-    if (familyGroupId) socket.join('fg_' + familyGroupId);
+  socket.on('join', async function(familyGroupId) {
+    if (!familyGroupId || !socket.userId) return;
+    try {
+      var [[row]] = await pool.execute('SELECT family_group_id FROM users WHERE id = ?', [socket.userId]);
+      if (row && String(row.family_group_id) === String(familyGroupId)) {
+        socket.join('fg_' + familyGroupId);
+      }
+    } catch (_) {}
   });
 });
 
@@ -2074,7 +2090,7 @@ app.get('/dashboard', requireDashboard, function(req, res) {
 });
 
 // ===== 大厨快速归档 =====
-app.put('/api/orders/archive/:id', requireAuth, async function(req, res) {
+app.put('/api/orders/archive/:id', requireAuth, requireChef, async function(req, res) {
   try {
     var scopeCol = req.scopeColumn || 'user_id';
     var scopeVal = req.scopeValue || req.session.userId;
@@ -2085,7 +2101,7 @@ app.put('/api/orders/archive/:id', requireAuth, async function(req, res) {
   } catch (e) { console.error(ts() + ' [API] 服务器错误:', e.message); res.status(500).json({ error: '服务器错误' }); }
 });
 
-app.put('/api/orders/archive-batch', requireAuth, async function(req, res) {
+app.put('/api/orders/archive-batch', requireAuth, requireChef, async function(req, res) {
   try {
     var scopeCol = req.scopeColumn || 'user_id';
     var scopeVal = req.scopeValue || req.session.userId;
