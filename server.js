@@ -53,6 +53,30 @@ const pool = mysql.createPool({
   keepAliveInitialDelay: 0,
 });
 
+// ===== 数据库自愈：确保表结构存在 =====
+(async function runMigrations() {
+  try {
+    // 确保 orders 表有 archived_at 和 deleted_at 列
+    await pool.execute('ALTER TABLE orders ADD COLUMN archived_at DATETIME NULL').catch(() => {});
+    await pool.execute('ALTER TABLE orders ADD COLUMN deleted_at DATETIME NULL').catch(() => {});
+    await pool.execute('ALTER TABLE orders ADD INDEX idx_archived_at (archived_at)').catch(() => {});
+    await pool.execute('ALTER TABLE orders ADD INDEX idx_deleted_at (deleted_at)').catch(() => {});
+    console.log(ts() + ' [MIGRATE] orders columns ensured');
+  } catch (e) { console.error(ts() + ' [MIGRATE] orders error:', e.message); }
+  try {
+    await pool.execute(`CREATE TABLE IF NOT EXISTS dashboard_stats (
+      id INT PRIMARY KEY DEFAULT 1,
+      total_users INT NOT NULL DEFAULT 0,
+      total_families INT NOT NULL DEFAULT 0,
+      today_orders INT NOT NULL DEFAULT 0,
+      today_completed INT NOT NULL DEFAULT 0,
+      active_families INT NOT NULL DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    console.log(ts() + ' [MIGRATE] dashboard_stats table ensured');
+  } catch (e) { console.error(ts() + ' [MIGRATE] dashboard_stats error:', e.message); }
+})();
+
 // ===== 订单生命周期：定时归档任务 =====
 function ts() { return new Date().toISOString(); }
 
