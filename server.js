@@ -2306,14 +2306,10 @@ app.get('/api/dashboard/users', requireDashboard, dashboardApiLimiter, async fun
       params
     );
 
-    params.push(limit, offset);
-    var dataSql = 'SELECT u.id, u.phone, u.role, u.status, u.created_at, f.name AS family_name FROM users u LEFT JOIN family_groups f ON u.family_group_id = f.id ' + whereClause + ' ORDER BY u.created_at DESC LIMIT ? OFFSET ?';
-    try {
-      var [rows] = await pool.execute(dataSql, params);
-    } catch (sqlErr) {
-      console.error('/api/dashboard/users SQL error:', sqlErr.message, '| SQL:', dataSql, '| params:', JSON.stringify(params));
-      throw sqlErr;
-    }
+    var [rows] = await pool.execute(
+      'SELECT u.id, u.phone, u.role, u.status, u.created_at, f.name AS family_name FROM users u LEFT JOIN family_groups f ON u.family_group_id = f.id ' + whereClause + ' ORDER BY u.created_at DESC LIMIT ' + limit + ' OFFSET ' + offset,
+      params
+    );
 
     res.json({
       users: rows.map(function(r) {
@@ -2443,9 +2439,8 @@ app.get('/api/dashboard/families', requireDashboard, dashboardApiLimiter, async 
       params
     );
 
-    params.push(limit, offset);
     var [rows] = await pool.execute(
-      'SELECT f.id, f.name, f.invite_code, f.created_at, (SELECT COUNT(*) FROM users WHERE family_group_id = f.id) AS member_count FROM family_groups f ' + where + ' ORDER BY f.created_at DESC LIMIT ? OFFSET ?',
+      'SELECT f.id, f.name, f.invite_code, f.created_at, (SELECT COUNT(*) FROM users WHERE family_group_id = f.id) AS member_count FROM family_groups f ' + where + ' ORDER BY f.created_at DESC LIMIT ' + limit + ' OFFSET ' + offset,
       params
     );
 
