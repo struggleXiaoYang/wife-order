@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="csrf-token" content="<%= csrfToken %>">
   <title>家庭私厨 · 管理后台</title>
   <link rel="stylesheet" href="/dashboard.css?v=2">
 </head>
@@ -15,7 +14,6 @@
     <div class="dash-login-card">
       <h1 class="dash-login-title">家庭私厨 · 管理后台</h1>
       <form method="POST" action="/dashboard/login">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <input class="dash-login-input" type="text" name="username" placeholder="管理员账号" autofocus required>
         <input class="dash-login-input" type="password" name="password" placeholder="管理员密码" required>
         <% if (locals.error) { %><p class="dash-login-error"><%= error %></p><% } %>
@@ -513,23 +511,6 @@
     if (t) { t.textContent = '网络错误，请稍后重试'; t.style.display = ''; setTimeout(function() { t.style.display = 'none'; }, 2500); }
   });
 
-  // CSRF token
-  var _csrfMeta = document.querySelector('meta[name="csrf-token"]');
-  var _csrfToken = _csrfMeta ? _csrfMeta.getAttribute('content') : '';
-
-  // 封装 fetch，自动附带 CSRF token
-  function apiFetch(url, options) {
-    options = options || {};
-    options.headers = options.headers || {};
-    if (_csrfToken && (options.method || '').toUpperCase() !== 'GET') {
-      options.headers['X-CSRF-Token'] = _csrfToken;
-    }
-    if (!options.headers['Content-Type'] && (options.method || '').toUpperCase() !== 'GET') {
-      options.headers['Content-Type'] = 'application/json';
-    }
-    return fetch(url, options);
-  }
-
   // ===== 侧边栏切换 =====
   function toggleSidebar() {
     var sidebar = document.getElementById('sidebar');
@@ -773,7 +754,7 @@
   }
 
   function viewFamilyDetail(fid) {
-    apiFetch('/api/dashboard/families/' + fid).then(function(r) { return r.json(); }).then(function(f) {
+    fetch('/api/dashboard/families/' + fid).then(function(r) { return r.json(); }).then(function(f) {
       var members = (f.members || []).map(function(m) {
         return m.phone + ' (' + ((ROLE_MAP[m.role] || '点菜员')) + ')';
       }).join('\n');
@@ -1069,7 +1050,7 @@
   function toggleUserStatus(userId, action) {
     var msg = action === 'disable' ? '确定要禁用该用户吗？禁用后该用户将无法登录。' : '确定要启用该用户吗？';
     if (!confirm(msg)) return;
-    apiFetch('/api/dashboard/users/' + userId + '/' + action, { method: 'PUT' })
+    fetch('/api/dashboard/users/' + userId + '/' + action, { method: 'PUT' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         if (d.error) { alert(d.error); return; }
@@ -1081,7 +1062,7 @@
   // ====== 删除用户 ======
   function deleteUser(userId, phone) {
     if (!confirm('确定要删除用户 ' + phone + ' 吗？\n\n此操作不可撤销，将物理删除该用户及其关联数据。')) return;
-    apiFetch('/api/dashboard/users/' + userId, { method: 'DELETE' }).then(function(r) { return r.json(); }).then(function(d) {
+    fetch('/api/dashboard/users/' + userId, { method: 'DELETE' }).then(function(r) { return r.json(); }).then(function(d) {
       if (d.error) { alert(d.error); return; }
       alert('已删除');
       loadUserPage(window._currentUserPage || 1);
@@ -1091,7 +1072,7 @@
   // ====== 删除家庭组 ======
   function deleteFamily(fid, name) {
     if (!confirm('确定要删除家庭组「' + name + '」吗？\n\n此操作将解散该家庭组，所有成员的归属关系将被清除。')) return;
-    apiFetch('/api/dashboard/families/' + fid, { method: 'DELETE' }).then(function(r) { return r.json(); }).then(function(d) {
+    fetch('/api/dashboard/families/' + fid, { method: 'DELETE' }).then(function(r) { return r.json(); }).then(function(d) {
       if (d.error) { alert(d.error); return; }
       alert('已删除');
       loadFamilyPage(window._currentFamilyPage || 1);
@@ -1141,7 +1122,7 @@
   }
   function lifecycleBatch() {
     if (!confirm('确定批量归档所有 completed 订单吗？')) return;
-    apiFetch('/api/dashboard/data/batch-archive', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) })
+    fetch('/api/dashboard/data/batch-archive', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) })
       .then(function(r) { return r.json(); }).then(function(d) { alert(d.message); loadOrderPage(1); });
   }
   function loadOrderPage(page) {
@@ -1176,14 +1157,14 @@
     };
     // 简化：archive 和 restore 直接调
     if (action === 'archive') {
-      apiFetch('/api/orders/archive/' + id, { method: 'PUT' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
+      fetch('/api/orders/archive/' + id, { method: 'PUT' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
     } else if (action === 'restore') {
-      apiFetch('/api/dashboard/data/restore/' + id, { method: 'PUT' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
+      fetch('/api/dashboard/data/restore/' + id, { method: 'PUT' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
     } else if (action === 'softdelete') {
       if (!confirm('确定软删除该订单？')) return;
-      apiFetch('/api/dashboard/data/restore/' + id, { method: 'PUT' }).then(function(){ return apiFetch('/api/dashboard/data/batch-softdelete', { method: 'PUT' }); }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
+      fetch('/api/dashboard/data/restore/' + id, { method: 'PUT' }).then(function(){ return fetch('/api/dashboard/data/batch-softdelete', { method: 'PUT' }); }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
     } else if (action === 'permanent') {
-      apiFetch('/api/dashboard/data/permanent/' + id, { method: 'DELETE' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
+      fetch('/api/dashboard/data/permanent/' + id, { method: 'DELETE' }).then(function(r){return r.json();}).then(function(d){ alert(d.message); loadOrderPage(window._currentOrderPage || 1); });
     }
   }
 
@@ -1406,7 +1387,7 @@
 
     if (newPw.length < 6) { msg.innerHTML = '<span style="color:#E57373;">新密码至少6位</span>'; return; }
 
-    apiFetch('/api/dashboard/settings/password', {
+    fetch('/api/dashboard/settings/password', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ oldPassword: oldPw, newPassword: newPw }),

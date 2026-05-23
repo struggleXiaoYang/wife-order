@@ -194,17 +194,9 @@ process.on('unhandledRejection', function(reason) {
 // 1. HTTP 压缩（第一个中间件，阈值 1KB）
 app.use(compression({ threshold: 1024 }));
 
-// 2. 安全响应头 + CSP（过渡期保留 unsafe-inline，后续迁移至 nonce）
+// 2. 安全响应头（CSP 暂不开启，EJS 内联脚本/样式较多）
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'"],
-    },
-  },
+  contentSecurityPolicy: false,
 }));
 app.disable('x-powered-by');
 
@@ -241,12 +233,7 @@ var sessionMiddleware = session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: {
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    httpOnly: true,
-  },
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 },
   rolling: true,
 });
 app.use(sessionMiddleware);
@@ -2046,7 +2033,7 @@ app.get('/dashboard/login', function(req, res) {
   res.render('dashboard', { loggedIn: false, error: '' });
 });
 
-app.post('/dashboard/login', dashboardLimiter, csrfCheck, function(req, res) {
+app.post('/dashboard/login', dashboardLimiter, function(req, res) {
   var username = req.body.username;
   var password = req.body.password;
   if (!username || !password) {
@@ -2148,7 +2135,7 @@ app.get('/api/dashboard/data/deleted', requireDashboard, dashboardApiLimiter, as
   } catch (e) { console.error(ts() + ' [API] 服务器错误:', e.message); res.status(500).json({ error: '服务器错误' }); }
 });
 
-app.put('/api/dashboard/data/restore/:id', requireDashboard, dashboardApiLimiter, csrfCheck, async function(req, res) {
+app.put('/api/dashboard/data/restore/:id', requireDashboard, dashboardApiLimiter, async function(req, res) {
   try {
     var [r] = await pool.execute('UPDATE orders SET archived_at = NULL, deleted_at = NULL WHERE id = ?', [req.params.id]);
     if (r.affectedRows === 0) return res.json({ success: false, message: '订单不存在' });
@@ -2158,7 +2145,7 @@ app.put('/api/dashboard/data/restore/:id', requireDashboard, dashboardApiLimiter
 });
 
 // 批量操作
-app.put('/api/dashboard/data/batch-archive', requireDashboard, dashboardApiLimiter, csrfCheck, async function(req, res) {
+app.put('/api/dashboard/data/batch-archive', requireDashboard, dashboardApiLimiter, async function(req, res) {
   try {
     var status = (req.body.status || '').trim();
     if (!status) return res.json({ success: false, message: '请指定状态' });
@@ -2168,7 +2155,7 @@ app.put('/api/dashboard/data/batch-archive', requireDashboard, dashboardApiLimit
   } catch (e) { console.error(ts() + ' [API] 服务器错误:', e.message); res.status(500).json({ error: '服务器错误' }); }
 });
 
-app.put('/api/dashboard/data/batch-softdelete', requireDashboard, dashboardApiLimiter, csrfCheck, async function(req, res) {
+app.put('/api/dashboard/data/batch-softdelete', requireDashboard, dashboardApiLimiter, async function(req, res) {
   try {
     var [r] = await pool.execute('UPDATE orders SET deleted_at = NOW() WHERE archived_at IS NOT NULL AND deleted_at IS NULL');
     cacheService.del('dash_stats');
@@ -2176,7 +2163,7 @@ app.put('/api/dashboard/data/batch-softdelete', requireDashboard, dashboardApiLi
   } catch (e) { console.error(ts() + ' [API] 服务器错误:', e.message); res.status(500).json({ error: '服务器错误' }); }
 });
 
-app.put('/api/dashboard/data/batch-restore', requireDashboard, dashboardApiLimiter, csrfCheck, async function(req, res) {
+app.put('/api/dashboard/data/batch-restore', requireDashboard, dashboardApiLimiter, async function(req, res) {
   try {
     var scope = (req.body.scope || '').trim();
     var where = 'WHERE deleted_at IS NULL';
@@ -2190,7 +2177,7 @@ app.put('/api/dashboard/data/batch-restore', requireDashboard, dashboardApiLimit
   } catch (e) { console.error(ts() + ' [API] 服务器错误:', e.message); res.status(500).json({ error: '服务器错误' }); }
 });
 
-app.delete('/api/dashboard/data/permanent/:id', requireDashboard, dashboardApiLimiter, csrfCheck, async function(req, res) {
+app.delete('/api/dashboard/data/permanent/:id', requireDashboard, dashboardApiLimiter, async function(req, res) {
   try {
     var [[row]] = await pool.execute('SELECT id FROM orders WHERE id = ? AND deleted_at IS NOT NULL', [req.params.id]);
     if (!row) return res.json({ success: false, message: '只能永久删除已软删除的订单' });
@@ -2355,7 +2342,7 @@ app.get('/api/dashboard/users/:id', requireDashboard, dashboardApiLimiter, async
   }
 });
 
-app.delete('/api/dashboard/users/:id', requireDashboard, dashboardApiLimiter, csrfCheck, async function(req, res) {
+app.delete('/api/dashboard/users/:id', requireDashboard, dashboardApiLimiter, async function(req, res) {
   try {
     var userId = parseInt(req.params.id, 10);
     // 不能删除自己（管理员账号在 users 表中对应的用户）
@@ -2393,7 +2380,7 @@ app.delete('/api/dashboard/users/:id', requireDashboard, dashboardApiLimiter, cs
 });
 
 // 禁用用户
-app.put('/api/dashboard/users/:id/disable', requireDashboard, dashboardApiLimiter, csrfCheck, async function(req, res) {
+app.put('/api/dashboard/users/:id/disable', requireDashboard, dashboardApiLimiter, async function(req, res) {
   try {
     var userId = parseInt(req.params.id, 10);
     var [[user]] = await pool.execute('SELECT id, phone FROM users WHERE id = ?', [userId]);
@@ -2407,7 +2394,7 @@ app.put('/api/dashboard/users/:id/disable', requireDashboard, dashboardApiLimite
 });
 
 // 启用用户
-app.put('/api/dashboard/users/:id/enable', requireDashboard, dashboardApiLimiter, csrfCheck, async function(req, res) {
+app.put('/api/dashboard/users/:id/enable', requireDashboard, dashboardApiLimiter, async function(req, res) {
   try {
     var userId = parseInt(req.params.id, 10);
     var [[user]] = await pool.execute('SELECT id FROM users WHERE id = ?', [userId]);
@@ -2526,7 +2513,7 @@ app.get('/api/dashboard/family/:id/members', requireDashboard, dashboardApiLimit
   }
 });
 
-app.delete('/api/dashboard/families/:id', requireDashboard, dashboardApiLimiter, csrfCheck, async function(req, res) {
+app.delete('/api/dashboard/families/:id', requireDashboard, dashboardApiLimiter, async function(req, res) {
   try {
     var fgId = parseInt(req.params.id, 10);
     var [[fg]] = await pool.execute('SELECT id FROM family_groups WHERE id = ?', [fgId]);
@@ -2666,7 +2653,7 @@ app.get('/api/dashboard/settings', requireDashboard, dashboardApiLimiter, async 
 });
 
 // 系统设置 - 修改管理员密码
-app.put('/api/dashboard/settings/password', requireDashboard, dashboardApiLimiter, csrfCheck, async function(req, res) {
+app.put('/api/dashboard/settings/password', requireDashboard, dashboardApiLimiter, async function(req, res) {
   try {
     var oldPassword = (req.body.oldPassword || '').trim();
     var newPassword = (req.body.newPassword || '').trim();
