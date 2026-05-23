@@ -2142,7 +2142,7 @@ app.get('/api/dashboard/stats', requireDashboard, async function(req, res) {
 app.get('/api/dashboard/trend', requireDashboard, async function(req, res) {
   try {
     var [rows] = await pool.execute(
-      'SELECT DATE(created_at) AS date, COUNT(*) AS cnt FROM orders WHERE deleted_at IS NULL AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY DATE(created_at) ORDER BY date'
+      'SELECT DATE_FORMAT(created_at, "%Y-%m-%d") AS date, COUNT(*) AS cnt FROM orders WHERE deleted_at IS NULL AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) GROUP BY DATE_FORMAT(created_at, "%Y-%m-%d") ORDER BY date'
     );
     var dateMap = {};
     rows.forEach(function(r) { dateMap[r.date] = r.cnt; });
@@ -2680,7 +2680,7 @@ app.get('/api/dashboard/insights', requireDashboard, async function(req, res) {
   try {
     // 热门菜品 Top 5（本周）
     var [hotDishes] = await pool.execute(
-      'SELECT d.name, COUNT(*) AS cnt FROM order_items oi JOIN orders o ON oi.order_id = o.id JOIN dishes d ON oi.dish_id = d.id WHERE o.deleted_at IS NULL AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) GROUP BY d.id, d.name ORDER BY cnt DESC LIMIT 5'
+      'SELECT d.name, COUNT(*) AS cnt FROM order_items oi JOIN orders o ON oi.order_id = o.id JOIN dishes d ON oi.dish_id = d.id WHERE o.deleted_at IS NULL AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) GROUP BY d.id, d.name ORDER BY cnt DESC LIMIT 5'
     );
 
     // 活跃时段热力图（7天×24小时）
@@ -2702,7 +2702,7 @@ app.get('/api/dashboard/insights', requireDashboard, async function(req, res) {
 
     // 家庭组活跃排行（本周点菜次数）
     var [fgRankings] = await pool.execute(
-      'SELECT f.name, COUNT(*) AS cnt FROM orders o JOIN family_groups f ON o.family_group_id = f.id WHERE o.deleted_at IS NULL AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AND o.family_group_id IS NOT NULL GROUP BY f.id, f.name ORDER BY cnt DESC LIMIT 5'
+      'SELECT f.name, COUNT(*) AS cnt FROM orders o JOIN family_groups f ON o.family_group_id = f.id WHERE o.deleted_at IS NULL AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND o.family_group_id IS NOT NULL GROUP BY f.id, f.name ORDER BY cnt DESC LIMIT 5'
     );
 
     res.json({
